@@ -10,10 +10,10 @@ android {
 
     defaultConfig {
         applicationId = "io.github.lxzrvi.rekey"
-        minSdk = 26
+        minSdk = 31
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -26,7 +26,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // Release signing is deliberately not configured until a secure keystore is available.
+            // Production signing is configured only when a secure keystore is available.
         }
     }
 
@@ -37,6 +37,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -47,16 +48,15 @@ android {
         abortOnError = true
         checkReleaseBuilds = false
         warningsAsErrors = false
-        // AGP 9 always emits HTML, XML and SARIF reports; no deprecated toggles needed.
     }
 }
 
-// AGP supplies Kotlin. Its JVM target follows compileOptions.targetCompatibility.
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
+    implementation(libs.haze)
 
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)

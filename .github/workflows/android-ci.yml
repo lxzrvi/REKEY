@@ -15,13 +15,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRADLE_ARGS: --no-daemon --stacktrace --max-workers=2
+  GRADLE_ARGS: --no-daemon --stacktrace --max-workers=4
 
 jobs:
   release:
-    name: Release build, unit tests and lint
+    name: Release APK only
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,11 +45,11 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0
 
-      - name: Build release, run release unit tests and lint
-        run: ./gradlew $GRADLE_ARGS :app:assembleRelease :app:testReleaseUnitTest :app:lintRelease
+      # Keep the artifact path short: compile/shrink/package the release, then upload immediately.
+      # Tests, lint and emulator checks run in parallel jobs and never delay this upload.
+      - name: Build release APK
+        run: ./gradlew $GRADLE_ARGS :app:assembleRelease
 
-      # The only downloadable workflow artifact is the release APK.
-      # No production keystore is configured, so AGP produces app-release-unsigned.apk.
       - name: Upload release APK only
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -59,9 +59,41 @@ jobs:
           archive: false
           retention-days: 14
 
+  checks:
+    name: Release unit tests and lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle and validate wrapper
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          cache-read-only: true
+          validate-wrappers: true
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0
+
+      - name: Run release unit tests and lint
+        run: ./gradlew $GRADLE_ARGS :app:testReleaseUnitTest :app:lintRelease
+
+      # Results remain in job logs only. No report artifact is uploaded.
+
   emulator:
     name: Ephemeral runtime checks (no artifacts)
-    needs: release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -111,4 +143,4 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash scripts/emulator-smoke.sh
 
-      # Test results stay in the Actions job logs. No test APK, reports or screenshots are uploaded.
+      # Test APKs, reports and screenshots disappear with the runner. Only the release job uploads a file.

@@ -12,9 +12,11 @@ print_failure_logs() {
 }
 trap print_failure_logs EXIT
 
-./gradlew --no-daemon --stacktrace --max-workers=2 :app:connectedDebugAndroidTest
+./gradlew --no-daemon --stacktrace --max-workers=4 :app:connectedDebugAndroidTest
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -W -n io.github.lxzrvi.rekey/.MainActivity
+# Allow the intentional branded splash to finish before checking the live process.
+adb shell 'for i in 1 2 3 4 5 6; do pidof io.github.lxzrvi.rekey >/dev/null && break; sleep 1; done'
 printf 'App process PID: '
 adb shell pidof io.github.lxzrvi.rekey
 crash_log="$(adb logcat -d -b crash -v threadtime)"

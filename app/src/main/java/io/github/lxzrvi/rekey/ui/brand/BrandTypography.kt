@@ -1,22 +1,21 @@
 package io.github.lxzrvi.rekey.ui.brand
 
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import io.github.lxzrvi.rekey.ui.theme.Poppins
+import io.github.lxzrvi.rekey.R
 
-/**
- * The owner selected Holiday by Letterhend Studio.
- *
- * Replace this fallback ONLY after the licensed font files and app-embedding permission
- * are available. See docs/BRANDING.md. Do not commit a personal-use demo or license receipt.
- */
+/** Allura is reserved exclusively for the exact REKEY wordmark. Body text stays Poppins. */
+val Allura = FontFamily(Font(R.font.allura_regular, FontWeight.Normal))
+
 object BrandTypography {
     val wordmark = TextStyle(
-        fontFamily = Poppins,
-        fontWeight = FontWeight.Bold,
-        fontSize = 56.sp,
-        lineHeight = 64.sp,
-        letterSpacing = 1.5.sp,
+        fontFamily = Allura,
+        fontWeight = FontWeight.Normal,
+        fontSize = 64.sp,
+        lineHeight = 72.sp,
+        letterSpacing = 0.sp,
     )
 }
