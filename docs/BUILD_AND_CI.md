@@ -13,13 +13,13 @@
 | Material 3 | 1.4.0 through the BOM |
 | Activity Compose | 1.13.0 |
 | AndroidX Core | 1.19.1 |
-| Compile/target SDK | 37 |
+| Compile/target SDK | 37.0.0 |
 | Minimum SDK | 26 |
 | Build Tools | 36.0.0 |
 | CI JDK | Temurin 21 |
 | Java/Kotlin bytecode compatibility | 17 |
 
-AGP 9 supplies Kotlin: do not also apply `org.jetbrains.kotlin.android`. The Compose Compiler plugin matches the bundled Kotlin version. The selected Compose UI and Core artifacts require compile SDK 37 and at least AGP 9.1, as declared in their AAR metadata.
+AGP 9 supplies Kotlin: do not also apply `org.jetbrains.kotlin.android`. The Compose Compiler plugin matches the bundled Kotlin version. The selected Compose UI and Core artifacts require compile SDK 37.0 and at least AGP 9.1, as declared in their AAR metadata.
 
 The Gradle wrapper JAR was checked against Gradle's published SHA-256. The distribution URL also pins the published distribution checksum. CI enables wrapper validation. Action dependencies are pinned to commit SHAs with release-version comments.
 
@@ -54,6 +54,6 @@ The emulator disables system animations for deterministic UI testing. This tests
 
 ## Local prerequisites
 
-Install a JDK compatible with Gradle 9.7.1 (JDK 21 recommended), Android SDK Platform 37 and Build Tools 36.0.0. Accept the Android SDK licenses through Android Studio or `sdkmanager`. Set `ANDROID_HOME` or create an uncommitted `local.properties` pointing to the SDK.
+Install a JDK compatible with Gradle 9.7.1 (JDK 21 recommended), Android SDK Platform 37.0 and Build Tools 36.0.0. Accept the Android SDK licenses through Android Studio or `sdkmanager`. Set `ANDROID_HOME` or create an uncommitted `local.properties` pointing to the SDK.
 
 Use `./gradlew` on macOS/Linux and `gradlew.bat` on Windows. Do not use a globally installed Gradle in place of the wrapper.

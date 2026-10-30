@@ -18,7 +18,7 @@ An Android app built with Kotlin and Jetpack Compose.
 
 ## Open and build
 
-Use an Android Studio release that supports AGP 9.4.1, with JDK 21 recommended for the command line. Install Android SDK Platform 37 and Build Tools 36.0.0. `local.properties` is machine-specific and intentionally not committed.
+Use an Android Studio release that supports AGP 9.4.1, with JDK 21 recommended for the command line. Install Android SDK Platform 37.0 and Build Tools 36.0.0. `local.properties` is machine-specific and intentionally not committed.
 
 ```bash
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug

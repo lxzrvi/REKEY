@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "io.github.lxzrvi.rekey"
     compileSdk = 37
+    compileSdkMinor = 0
 
     defaultConfig {
         applicationId = "io.github.lxzrvi.rekey"
