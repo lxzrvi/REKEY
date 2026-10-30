@@ -13,7 +13,7 @@
 | Material 3 | 1.4.0 through the BOM |
 | Activity Compose | 1.13.0 |
 | AndroidX Core | 1.19.1 |
-| Compile/target SDK | 37.0.0 |
+| Compile/target SDK | 37.0 |
 | Minimum SDK | 26 |
 | Build Tools | 36.0.0 |
 | CI JDK | Temurin 21 |

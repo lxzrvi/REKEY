@@ -8,7 +8,7 @@ An Android app built with Kotlin and Jetpack Compose.
 
 - Kotlin through Android Gradle Plugin 9.4.1's built-in Kotlin support.
 - Jetpack Compose with the stable `2026.09.00` BOM and Material 3.
-- Compile/target SDK 37; minimum SDK 26 (Android 8.0).
+- Compile/target SDK 37.0; minimum SDK 26 (Android 8.0).
 - Offline Poppins Thin, Regular, Medium and Bold, with the SIL Open Font License.
 - Monochrome light/dark themes, adaptive black launcher icon and Android 12+ splash.
 - White wordmark on a dark surface. **Holiday by Letterhend Studio is selected but not yet licensed/bundled; the visible wordmark is a marked Poppins fallback.**

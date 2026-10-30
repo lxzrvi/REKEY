@@ -7,7 +7,7 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <!-- Navigation-bar appearance is set by the version-aware edge-to-edge controller. -->
         <item name="android:colorAccent">#111111</item>
     </style>
 </resources>

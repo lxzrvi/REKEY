@@ -47,9 +47,7 @@ android {
         abortOnError = true
         checkReleaseBuilds = false
         warningsAsErrors = false
-        htmlReport = true
-        xmlReport = true
-        sarifReport = true
+        // AGP 9 always emits HTML, XML and SARIF reports; no deprecated toggles needed.
     }
 }
 
