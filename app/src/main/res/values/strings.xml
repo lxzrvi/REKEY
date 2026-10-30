@@ -4,23 +4,46 @@
     <string name="open_appearance">Open appearance settings</string>
     <string name="close_appearance">Close appearance settings</string>
     <string name="presets">Presets</string>
-    <string name="appearance">Appearance</string>
     <string name="appearance_title">Appearance</string>
     <string name="appearance_subtitle">Make it feel like yours.</string>
-    <string name="theme">Theme</string>
     <string name="theme_title">Theme</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="accent">Accent</string>
     <string name="accent_title">Accent</string>
     <string name="accent_default">Default</string>
     <string name="accent_custom">Custom</string>
     <string name="hex_color">Hex color</string>
     <string name="apply">Apply</string>
     <string name="invalid_hex">Use a 6-digit hex color, e.g. #007AFF</string>
-    <string name="card_box_label">Box %1$d</string>
-    <string name="remove_card_description">Remove box %1$d</string>
-    <string name="add_card_description">Add a box</string>
+    <string name="card_layout_label">Layout %1$d</string>
+    <string name="remove_card_description">Remove layout %1$d</string>
+    <string name="add_card_description">Add a layout</string>
     <string name="version_prefix">v%1$s</string>
+
+    <!-- First-run setup -->
+    <string name="setup_title">Set up REKEY</string>
+    <string name="setup_subtitle">Two quick steps and your keyboard is ready.</string>
+    <string name="setup_step_one">Enable REKEY</string>
+    <string name="setup_step_one_body">Turn on REKEY in your keyboard settings so Android lets it type.</string>
+    <string name="setup_step_two">Select REKEY</string>
+    <string name="setup_step_two_body">Pick REKEY from the keyboard picker to make it your active keyboard.</string>
+    <string name="setup_open_settings">Open keyboard settings</string>
+    <string name="setup_open_picker">Choose keyboard</string>
+    <string name="setup_done_label">Done</string>
+    <string name="setup_continue">Continue</string>
+    <string name="setup_skip">Skip for now</string>
+    <string name="setup_step_index">Step %1$d of 2</string>
+
+    <!-- Preset editor -->
+    <string name="editor_title">Preset</string>
+    <string name="editor_back">Back to presets</string>
+    <string name="editor_name_label">Layout name</string>
+    <string name="editor_details_label">Details</string>
+    <string name="editor_unnamed">No name</string>
+    <string name="editor_tap_to_edit">Tap to edit</string>
+    <string name="editor_use_layout">Use this layout</string>
+    <string name="editor_in_use">In use</string>
+    <string name="ime_name">REKEY</string>
+    <string name="ime_subtype">English (US)</string>
 </resources>

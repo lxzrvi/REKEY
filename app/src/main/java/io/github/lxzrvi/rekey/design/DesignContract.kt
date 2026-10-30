@@ -16,8 +16,8 @@ enum class PoppinsWeight(val value: Int) {
 }
 
 object MotionContract {
-    const val SPLASH_HOLD_MILLIS = 1100L
-    const val SPLASH_EXIT_MILLIS = 420
+    const val EDITOR_ENTER_MILLIS = 420
+    const val EDITOR_EXIT_MILLIS = 340
     const val DRAWER_ENTER_MILLIS = 360
     const val DRAWER_EXIT_MILLIS = 280
     const val CARD_SETTLE_MILLIS = 420

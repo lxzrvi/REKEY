@@ -10,7 +10,8 @@
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:colorAccent">#FFFFFFFF</item>
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <!-- The only REKEY drawn at startup. No icon background, so no circular mask. -->
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_mark</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
     </style>
 </resources>

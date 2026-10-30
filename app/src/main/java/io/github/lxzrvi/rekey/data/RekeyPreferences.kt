@@ -2,6 +2,8 @@ package io.github.lxzrvi.rekey.data
 
 import android.content.Context
 import androidx.core.content.edit
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** Lightweight local persistence; no network, account, or extra storage dependency. */
 class RekeyPreferences(context: Context) {
@@ -28,11 +30,63 @@ class RekeyPreferences(context: Context) {
             remove("blur"); remove("blur_radius"); remove("corners")
             remove("accent"); remove("accent_v2")
             remove("animations"); remove("contrast"); remove("text_scale")
+            remove("card_count")
         }
     }
 
-    fun loadCardCount(): Int = prefs.getInt("card_count", 4).coerceIn(0, 10_000)
-    fun saveCardCount(count: Int) = prefs.edit { putInt("card_count", count.coerceIn(0, 10_000)) }
+    // ---- First-run setup -------------------------------------------------
+
+    fun isSetupDone(): Boolean = prefs.getBoolean("setup_done", false)
+    fun setSetupDone(done: Boolean) = prefs.edit { putBoolean("setup_done", done) }
+
+    // ---- Keyboard layouts ------------------------------------------------
+
+    /** Four shipped layouts on a clean install; the user's own list after that. */
+    fun loadPresets(): List<KeyboardPreset> {
+        val raw = prefs.getString("presets_v1", null) ?: return KeyboardPalettes.defaults
+        return runCatching {
+            val arr = JSONArray(raw)
+            val out = ArrayList<KeyboardPreset>(arr.length())
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val palette = KeyboardPalette.fromJson(o.getString("palette"))
+                    ?: continue
+                out.add(
+                    KeyboardPreset(
+                        id = o.getInt("id"),
+                        name = o.getString("name"),
+                        details = o.optString("details", ""),
+                        palette = palette,
+                        placeholder = o.optBoolean("placeholder", false),
+                    ),
+                )
+            }
+            out
+        }.getOrDefault(KeyboardPalettes.defaults)
+    }
+
+    fun savePresets(list: List<KeyboardPreset>) {
+        val arr = JSONArray()
+        list.forEach { p ->
+            arr.put(
+                JSONObject()
+                    .put("id", p.id)
+                    .put("name", p.name)
+                    .put("details", p.details)
+                    .put("palette", p.palette.toJson())
+                    .put("placeholder", p.placeholder),
+            )
+        }
+        prefs.edit { putString("presets_v1", arr.toString()) }
+    }
+
+    fun nextPresetId(): Int = prefs.getInt("preset_next_id", 5)
+    fun saveNextPresetId(id: Int) = prefs.edit { putInt("preset_next_id", id.coerceAtLeast(5)) }
+
     fun loadSelectedCard(): Int = prefs.getInt("selected_card", 0).coerceAtLeast(0)
     fun saveSelectedCard(index: Int) = prefs.edit { putInt("selected_card", index.coerceAtLeast(0)) }
+
+    /** Layout the input method should paint with. */
+    fun loadActivePresetId(): Int = prefs.getInt("active_preset", 1)
+    fun saveActivePresetId(id: Int) = prefs.edit { putInt("active_preset", id) }
 }

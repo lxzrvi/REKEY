@@ -31,18 +31,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Locale
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AccentChoice
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.ThemeMode
-import io.github.lxzrvi.rekey.ui.theme.color
 
 /** Compact option boxes: theme segments, accent segments and Apply all share this. */
 private val OptionHeight = 38.dp
@@ -56,7 +55,6 @@ fun AppearanceDrawer(
 ) {
     // Custom starts closed. Tapping Custom opens the hex box; Apply closes it again.
     var hexOpen by rememberSaveable { mutableStateOf(false) }
-    val defaultHex = AccentChoice.DEFAULT.color(darkTheme)
 
     Column(
         modifier = modifier
@@ -116,7 +114,7 @@ fun AppearanceDrawer(
         }
         if (settings.accent == AccentChoice.CUSTOM && hexOpen) {
             HexColorField(
-                current = settings.customColor ?: defaultHex.toArgb(),
+                current = DefaultAccentHexArgb,
                 onColor = { argb ->
                     onChange(settings.copy(accent = AccentChoice.CUSTOM, customColor = argb))
                     hexOpen = false
@@ -153,12 +151,18 @@ private fun SegmentButton(
 }
 
 /**
- * Custom accent is hex-only. The field opens pre-filled with the accent that is
- * currently live (the default blue on first use), and Apply hides the box again.
+ * The hex box always opens on the default blue's own hex — never on a previously
+ * typed colour, so what you read always matches the swatch beside it.
+ */
+private val DefaultAccentHexArgb: Int = 0xFF007AFF.toInt()
+
+/**
+ * Custom accent is hex-only. The field opens pre-filled with #007AFF and Apply
+ * hides the box again.
  */
 @Composable
 private fun HexColorField(current: Int, onColor: (Int) -> Unit) {
-    var hex by remember(current) { mutableStateOf(String.format("#%06X", 0xFFFFFF and current)) }
+    var hex by remember(current) { mutableStateOf(String.format(Locale.US, "#%06X", 0xFFFFFF and current)) }
     var error by remember { mutableStateOf(false) }
     val preview = Color(current)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
