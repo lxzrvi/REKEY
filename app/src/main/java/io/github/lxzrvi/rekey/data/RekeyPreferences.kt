@@ -37,8 +37,8 @@ class RekeyPreferences(context: Context) {
         }
     }
 
-    fun loadCardCount(): Int = prefs.getInt("card_count", 2).coerceIn(2, 10_000)
-    fun saveCardCount(count: Int) = prefs.edit { putInt("card_count", count.coerceIn(2, 10_000)) }
+    fun loadCardCount(): Int = prefs.getInt("card_count", 4).coerceIn(0, 10_000)
+    fun saveCardCount(count: Int) = prefs.edit { putInt("card_count", count.coerceIn(0, 10_000)) }
     fun loadSelectedCard(): Int = prefs.getInt("selected_card", 1).coerceAtLeast(0)
     fun saveSelectedCard(index: Int) = prefs.edit { putInt("selected_card", index.coerceAtLeast(0)) }
 }

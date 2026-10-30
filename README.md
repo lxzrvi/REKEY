@@ -14,11 +14,11 @@ Kotlin/Jetpack Compose Android app. The product brief is still pending; the curr
 
 ## Current app
 
-- `REKEY` wordmark in Allura; all other text uses Poppins.
+- `REKEY` wordmark in Allura; all other text uses Poppins. Startup shows the wordmark only, with no loader.
 - Circular white logo with black REKEY text; launcher icon uses a white background and black text.
 - Edge-to-edge Compose UI with safe-area handling.
 - Haze 2.0.1 pure live blur: top/bottom edge blur and full-screen blur behind the appearance drawer. No tint, noise or background color is added to the blur.
-- Infinite circular card carousel with a 3D rotate/scale feel.
+- Draggable card stack with depth scale/fade, tap-to-front, add/remove cards and a progress counter.
 - Appearance drawer with theme, accent presets, custom color wheel + hex input, blur strength, corner radius, text size, animations and high contrast.
 - Thin thumb-less sliders; long press a slider to reset it.
 - Local persistence for appearance and demo-card state.
@@ -44,7 +44,7 @@ app/src/main/java/io/github/lxzrvi/rekey/
   ui/blur/                Haze 2 pure blur helpers
   ui/brand/               Allura wordmark typography
   ui/components/          Wordmark and splash
-  ui/home/                Header, carousel, drawer, menu morph
+  ui/home/                Header, card stack, drawer, menu morph
   ui/theme/               Poppins, colors and Material theme
   MainActivity.kt         Edge-to-edge entry point
 app/src/main/res/         Fonts, strings, themes and vector icons

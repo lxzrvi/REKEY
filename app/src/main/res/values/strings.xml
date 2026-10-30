@@ -29,6 +29,9 @@
     <string name="blur_strength">Blur strength</string>
     <string name="corner_radius">Corner radius</string>
     <string name="text_size">Text size</string>
+    <string name="text_size_value">%1$d%%</string>
+    <string name="card_box_label">Box %1$d</string>
+    <string name="remove_card_description">Remove box %1$d</string>
     <string name="typography_title">Typography</string>
     <string name="typography_note">Allura is used only for REKEY. Everything else uses Poppins.</string>
     <string name="motion_accessibility">Motion &amp; accessibility</string>

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — Text-only startup, in-place menu morph, redesigned card stack
+
+- Startup now shows only the REKEY wordmark; the loading spinner is removed.
+- Main-page logo is smaller (42 dp) and the wordmark is smaller (26 sp).
+- The three-dot control no longer travels: it morphs into an X in the same place, with the Appearance label directly to its left.
+- Theme options are full-width segmented buttons with gaps; text size uses S/M/L/XL buttons instead of a slider.
+- The sidebar has rounded top-left and bottom-left corners, with the border following only the left edge.
+- Replaced the pager carousel with a continuous draggable card stack (`ui/home/CardStack.kt`): depth scale/fade, tap-to-front, add card, per-card remove, and a counter with a progress bar. Card count and position persist locally.
+
 ## 0.3.0 — Release-only CI, Haze 2 and UI polish
 
 - Simplified GitHub Actions to a single release-APK job on `main`; removed unit-test, lint and emulator jobs.

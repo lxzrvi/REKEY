@@ -15,10 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -43,7 +43,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AccentPalette
 import io.github.lxzrvi.rekey.data.AppearanceSettings
@@ -64,34 +66,47 @@ fun AppearanceDrawer(
         modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(start = 24.dp, end = 24.dp, top = 56.dp, bottom = 28.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 64.dp, bottom = 28.dp)
             .testTag("appearance_drawer"),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(stringResource(R.string.appearance_title), style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
-            Text(stringResource(R.string.appearance_subtitle), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Text(
+            text = stringResource(R.string.appearance_subtitle),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         SectionLabel(stringResource(R.string.theme_title))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Full-width segmented options with gaps between them.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeMode.entries.forEach { mode ->
-                FilterChip(
+                SegmentButton(
+                    text = stringResource(
+                        when (mode) {
+                            ThemeMode.SYSTEM -> R.string.theme_system
+                            ThemeMode.LIGHT -> R.string.theme_light
+                            ThemeMode.DARK -> R.string.theme_dark
+                        },
+                    ),
                     selected = settings.themeMode == mode,
+                    modifier = Modifier.weight(1f),
                     onClick = { onChange(settings.copy(themeMode = mode)) },
-                    label = { Text(stringResource(when (mode) { ThemeMode.SYSTEM -> R.string.theme_system; ThemeMode.LIGHT -> R.string.theme_light; ThemeMode.DARK -> R.string.theme_dark })) },
                 )
             }
         }
+
         SectionLabel(stringResource(R.string.accent_title))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             AccentPalette.entries.forEach { palette ->
-                val label = stringResource(when (palette) {
-                    AccentPalette.ICE -> R.string.accent_ice
-                    AccentPalette.VIOLET -> R.string.accent_violet
-                    AccentPalette.MINT -> R.string.accent_mint
-                    AccentPalette.AMBER -> R.string.accent_amber
-                    AccentPalette.CUSTOM -> R.string.accent_custom
-                })
+                val label = stringResource(
+                    when (palette) {
+                        AccentPalette.ICE -> R.string.accent_ice
+                        AccentPalette.VIOLET -> R.string.accent_violet
+                        AccentPalette.MINT -> R.string.accent_mint
+                        AccentPalette.AMBER -> R.string.accent_amber
+                        AccentPalette.CUSTOM -> R.string.accent_custom
+                    },
+                )
                 Surface(
                     onClick = { onChange(settings.copy(accent = palette)) },
                     shape = CircleShape,
@@ -107,6 +122,7 @@ fun AppearanceDrawer(
                 onColor = { argb -> onChange(settings.copy(accent = AccentPalette.CUSTOM, customColor = argb)) },
             )
         }
+
         SectionLabel(stringResource(R.string.glass_blur))
         ToggleRow(stringResource(R.string.glass_blur), stringResource(R.string.glass_blur_description), settings.blurEnabled) { onChange(settings.copy(blurEnabled = it)) }
         ThinSliderRow(
@@ -126,21 +142,58 @@ fun AppearanceDrawer(
             valueText = "${settings.cornerRadius.toInt()} dp",
             onValueChange = { onChange(settings.copy(cornerRadius = it)) },
         )
+
         SectionLabel(stringResource(R.string.typography_title))
-        ThinSliderRow(
-            label = stringResource(R.string.text_size),
-            value = settings.textScale,
-            valueRange = 0.9f..1.2f,
-            defaultValue = 1f,
-            valueText = "${(settings.textScale * 100).toInt()}%",
-            onValueChange = { onChange(settings.copy(textScale = it)) },
+        // Text size uses buttons, not a slider.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(0.9f to "S", 1.0f to "M", 1.1f to "L", 1.2f to "XL").forEach { (scale, label) ->
+                SegmentButton(
+                    text = label,
+                    selected = kotlin.math.abs(settings.textScale - scale) < 0.02f,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onChange(settings.copy(textScale = scale)) },
+                )
+            }
+        }
+        Text(
+            text = stringResource(R.string.text_size_value, (settings.textScale * 100).toInt()),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
         )
         Text(stringResource(R.string.typography_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(stringResource(R.string.long_press_reset), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
         SectionLabel(stringResource(R.string.motion_accessibility))
         ToggleRow(stringResource(R.string.animations), stringResource(R.string.animations_description), settings.animationsEnabled) { onChange(settings.copy(animationsEnabled = it)) }
         ToggleRow(stringResource(R.string.high_contrast), stringResource(R.string.high_contrast_description), settings.highContrast) { onChange(settings.copy(highContrast = it)) }
         Text(stringResource(R.string.settings_persist), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun SegmentButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Surface(
+        onClick = onClick,
+        shape = shape,
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+        modifier = modifier.height(44.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+        }
     }
 }
 
