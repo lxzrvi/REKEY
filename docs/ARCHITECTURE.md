@@ -18,7 +18,7 @@ Allura is bundled only for the REKEY wordmark/icon. Poppins is bundled in four w
 
 ## ADR 005: Local state only
 
-`data/RekeyPreferences.kt` persists appearance and demo-card state in SharedPreferences. `rememberSaveable` preserves transient UI state through recreation. No account, network permission or analytics is introduced.
+`data/RekeyPreferences.kt` persists appearance, card count and the selected card position in SharedPreferences. `rememberSaveable` preserves transient UI state through recreation. No account, network permission or analytics is introduced.
 
 ## ADR 006: Release-only GitHub CI
 
@@ -31,3 +31,7 @@ The workflow runs only `:app:assembleRelease` on `main` and uploads only `app-re
 - English UI copy; product languages are not yet specified.
 - No analytics, ads, tracking, account system or network permission.
 - No app-code license selected by the agent on the owner's behalf.
+
+## ADR 007: Continuous card stack instead of a pager
+
+`ui/home/CardStack.kt` replaces the pager. A single animated `pos` value drives translation, scale, fade and depth dim inside `graphicsLayer`, so dragging does not recompose the card tree. Cards can be tapped to the front, added from the trailing plus card, and removed individually. Startup shows only the REKEY wordmark; there is no loader.
