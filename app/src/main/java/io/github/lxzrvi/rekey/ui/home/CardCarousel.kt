@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import dev.chrisbanes.haze.HazeState
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AppearanceSettings
@@ -87,13 +88,13 @@ fun CardCarousel(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .zIndex(2f - distance)
                         .graphicsLayer {
                             val scale = 1f - 0.16f * distance
                             scaleX = scale
                             scaleY = scale
                             alpha = 1f - 0.24f * distance
                             translationX = -offset * 38.dp.toPx()
-                            zIndex = 2f - distance
                         },
                     contentAlignment = Alignment.Center,
                 ) {
