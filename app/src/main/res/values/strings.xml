@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">REKEY</string>
+    <string name="foundation_eyebrow">THE STARTING POINT</string>
+    <string name="foundation_title">A little structure.\nA lot of possibility.</string>
+    <string name="foundation_description">The Android foundation is ready. The app’s purpose, screens and features will be built around your brief.</string>
+    <string name="brand_pending">Brand typeface pending</string>
+    <string name="design_section">DESIGN FOUNDATION</string>
+    <string name="typography_title">One voice. Four weights.</string>
+    <string name="typography_description">Poppins is bundled for offline, consistent app text.</string>
+    <string name="font_thin">Thin</string>
+    <string name="font_regular">Regular</string>
+    <string name="font_medium">Medium</string>
+    <string name="font_bold">Bold</string>
+    <string name="motion_title">Motion with a purpose.</string>
+    <string name="motion_description">A small, native Compose transition. No animation runtime is added until the app needs one.</string>
+    <string name="motion_reveal">Preview the motion</string>
+    <string name="motion_reset">Reset the preview</string>
+    <string name="motion_revealed">Ready for what comes next.</string>
+    <string name="motion_idle">Tap to reveal</string>
+    <string name="brand_icon_description">Provisional black REKEY key icon</string>
+    <string name="footer">FOUNDATION ONLY · NO APP FEATURES ASSUMED</string>
+</resources>
