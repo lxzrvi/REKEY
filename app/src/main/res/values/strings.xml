@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">REKEY</string>
-    <string name="brand_icon_description">REKEY app logo</string>
     <string name="open_appearance">Open appearance settings</string>
     <string name="close_appearance">Close appearance settings</string>
     <string name="presets">Presets</string>
@@ -20,8 +19,6 @@
     <string name="hex_color">Hex color</string>
     <string name="apply">Apply</string>
     <string name="invalid_hex">Use a 6-digit hex color, e.g. #007AFF</string>
-    <string name="text_size">Text size</string>
-    <string name="text_size_value">%1$d%%</string>
     <string name="card_box_label">Box %1$d</string>
     <string name="remove_card_description">Remove box %1$d</string>
     <string name="add_card_description">Add a box</string>

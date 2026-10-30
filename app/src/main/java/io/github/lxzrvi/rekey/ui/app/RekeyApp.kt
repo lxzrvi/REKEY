@@ -28,6 +28,7 @@ import androidx.core.view.WindowCompat
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.data.ThemeMode
 import io.github.lxzrvi.rekey.design.MotionContract
+import io.github.lxzrvi.rekey.design.TypeContract
 import io.github.lxzrvi.rekey.ui.components.SplashOverlay
 import io.github.lxzrvi.rekey.ui.home.HomeScreen
 import io.github.lxzrvi.rekey.ui.theme.RekeyTheme
@@ -74,23 +75,26 @@ fun RekeyApp() {
     RekeyTheme(settings = settings, darkTheme = darkTheme) {
         val density = LocalDensity.current
         CompositionLocalProvider(
-            LocalDensity provides Density(density.density, density.fontScale * settings.textScale),
+            LocalDensity provides Density(density.density, density.fontScale * TypeContract.TEXT_SCALE),
         ) {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                // The splash wordmark leaves completely before the home screen
+                // appears, so the big REKEY is never seen sitting on the main page.
+                val splashAlpha = 1f - (progress / 0.55f).coerceIn(0f, 1f)
+                val homeAlpha = ((progress - 0.55f) / 0.45f).coerceIn(0f, 1f)
                 Box(Modifier.fillMaxSize()) {
-                    // Pure cross-fade. No scale, no zoom, no slide.
                     HomeScreen(
                         settings = settings,
                         onSettingsChange = {
-                            settings = it.normalized()
+                            settings = it
                             preferences.saveAppearance(it)
                         },
                         preferences = preferences,
                         darkTheme = darkTheme,
-                        modifier = Modifier.graphicsLayer { alpha = progress },
+                        modifier = Modifier.graphicsLayer { alpha = homeAlpha },
                     )
-                    if (progress < 1f) {
-                        SplashOverlay(modifier = Modifier.graphicsLayer { alpha = 1f - progress })
+                    if (splashAlpha > 0f) {
+                        SplashOverlay(modifier = Modifier.graphicsLayer { alpha = splashAlpha })
                     }
                 }
             }

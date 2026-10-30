@@ -9,15 +9,11 @@ enum class AccentChoice { DEFAULT, CUSTOM }
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /**
- * Appearance-only preferences. Blur is permanently on at a fixed radius, corners
- * are fixed, animations are always on and high contrast is gone, so none of those
- * are user-adjustable any more.
+ * Appearance-only preferences. Blur, corners, animations and text size are all
+ * fixed by contract now, so the drawer only carries theme and accent.
  */
 data class AppearanceSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val accent: AccentChoice = AccentChoice.DEFAULT,
     val customColor: Int? = null,
-    val textScale: Float = 1f,
-) {
-    fun normalized(): AppearanceSettings = copy(textScale = textScale.coerceIn(0.9f, 1.2f))
-}
+)

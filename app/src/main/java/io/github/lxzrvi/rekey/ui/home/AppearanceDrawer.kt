@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,11 +25,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -41,6 +44,9 @@ import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.ThemeMode
 import io.github.lxzrvi.rekey.ui.theme.color
 
+/** Compact option boxes: theme segments, accent segments and Apply all share this. */
+private val OptionHeight = 38.dp
+
 @Composable
 fun AppearanceDrawer(
     settings: AppearanceSettings,
@@ -48,13 +54,17 @@ fun AppearanceDrawer(
     onChange: (AppearanceSettings) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Custom starts closed. Tapping Custom opens the hex box; Apply closes it again.
+    var hexOpen by rememberSaveable { mutableStateOf(false) }
+    val defaultHex = AccentChoice.DEFAULT.color(darkTheme)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(start = 20.dp, end = 20.dp, bottom = 28.dp)
             .testTag("appearance_drawer"),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             text = stringResource(R.string.appearance_subtitle),
@@ -81,45 +91,38 @@ fun AppearanceDrawer(
         }
 
         SectionLabel(stringResource(R.string.accent_title))
-        // Only two choices: the default blue, or a custom hex value.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             SegmentButton(
                 text = stringResource(R.string.accent_default),
                 selected = settings.accent == AccentChoice.DEFAULT,
                 modifier = Modifier.weight(1f),
-                onClick = { onChange(settings.copy(accent = AccentChoice.DEFAULT)) },
+                onClick = {
+                    hexOpen = false
+                    onChange(settings.copy(accent = AccentChoice.DEFAULT))
+                },
             )
             SegmentButton(
                 text = stringResource(R.string.accent_custom),
                 selected = settings.accent == AccentChoice.CUSTOM,
-                modifier = Modifier.weight(1f),
-                onClick = { onChange(settings.copy(accent = AccentChoice.CUSTOM)) },
+                modifier = Modifier.weight(1f).testTag("accent_custom"),
+                onClick = {
+                    // Tapping Custom toggles the editor; the accent itself stays Custom.
+                    hexOpen = if (settings.accent == AccentChoice.CUSTOM) !hexOpen else true
+                    if (settings.accent != AccentChoice.CUSTOM) {
+                        onChange(settings.copy(accent = AccentChoice.CUSTOM))
+                    }
+                },
             )
         }
-        if (settings.accent == AccentChoice.CUSTOM) {
+        if (settings.accent == AccentChoice.CUSTOM && hexOpen) {
             HexColorField(
-                current = settings.customColor,
-                fallback = AccentChoice.DEFAULT.color(darkTheme),
-                onColor = { argb -> onChange(settings.copy(accent = AccentChoice.CUSTOM, customColor = argb)) },
+                current = settings.customColor ?: defaultHex.toArgb(),
+                onColor = { argb ->
+                    onChange(settings.copy(accent = AccentChoice.CUSTOM, customColor = argb))
+                    hexOpen = false
+                },
             )
         }
-
-        SectionLabel(stringResource(R.string.text_size))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(0.9f to "S", 1.0f to "M", 1.1f to "L", 1.2f to "XL").forEach { (scale, label) ->
-                SegmentButton(
-                    text = label,
-                    selected = kotlin.math.abs(settings.textScale - scale) < 0.02f,
-                    modifier = Modifier.weight(1f),
-                    onClick = { onChange(settings.copy(textScale = scale)) },
-                )
-            }
-        }
-        Text(
-            text = stringResource(R.string.text_size_value, (settings.textScale * 100).toInt()),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
-        )
     }
 }
 
@@ -132,10 +135,10 @@ private fun SegmentButton(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
         border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-        modifier = modifier.height(44.dp),
+        modifier = modifier.height(OptionHeight),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
@@ -149,19 +152,20 @@ private fun SegmentButton(
     }
 }
 
-/** Custom accent is hex-only: a live swatch, the field, and Apply. No colour wheel. */
+/**
+ * Custom accent is hex-only. The field opens pre-filled with the accent that is
+ * currently live (the default blue on first use), and Apply hides the box again.
+ */
 @Composable
-private fun HexColorField(current: Int?, fallback: Color, onColor: (Int) -> Unit) {
-    var hex by remember(current) {
-        mutableStateOf(current?.let { String.format("#%06X", 0xFFFFFF and it) } ?: "")
-    }
+private fun HexColorField(current: Int, onColor: (Int) -> Unit) {
+    var hex by remember(current) { mutableStateOf(String.format("#%06X", 0xFFFFFF and current)) }
     var error by remember { mutableStateOf(false) }
-    val preview = current?.let { Color(it) } ?: fallback
+    val preview = Color(current)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
-                    .size(40.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
                     .background(preview),
             )
@@ -169,9 +173,9 @@ private fun HexColorField(current: Int?, fallback: Color, onColor: (Int) -> Unit
                 value = hex,
                 onValueChange = { hex = it.take(7); error = false },
                 label = { Text(stringResource(R.string.hex_color)) },
-                placeholder = { Text("#007AFF") },
                 singleLine = true,
                 isError = error,
+                textStyle = MaterialTheme.typography.bodyMedium,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
                 modifier = Modifier.weight(1f).testTag("hex_color_input"),
             )
@@ -187,8 +191,9 @@ private fun HexColorField(current: Int?, fallback: Color, onColor: (Int) -> Unit
                     onColor((0xFF000000L or parsed).toInt())
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(44.dp),
-        ) { Text(stringResource(R.string.apply)) }
+            modifier = Modifier.fillMaxWidth().height(OptionHeight).testTag("hex_apply"),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        ) { Text(stringResource(R.string.apply), fontSize = 13.sp) }
         if (error) {
             Text(
                 stringResource(R.string.invalid_hex),

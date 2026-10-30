@@ -5,7 +5,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -23,19 +22,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,13 +47,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import io.github.lxzrvi.rekey.BuildConfig
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AppearanceSettings
@@ -70,7 +68,6 @@ import io.github.lxzrvi.rekey.ui.blur.liveBlurSource
 import io.github.lxzrvi.rekey.ui.blur.rememberLiveBlurState
 import io.github.lxzrvi.rekey.ui.blur.topEdgeBlur
 import io.github.lxzrvi.rekey.ui.components.RekeyWordmark
-import io.github.lxzrvi.rekey.ui.theme.BrandWhite
 
 private val DrawerCorner = 26.dp
 
@@ -88,6 +85,7 @@ fun HomeScreen(
 ) {
     val blurState = rememberLiveBlurState()
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
+    val flying = remember { mutableStateListOf<FlyingCard>() }
     val drawerProgress by animateFloatAsState(
         targetValue = if (drawerOpen) 1f else 0f,
         animationSpec = tween(
@@ -125,7 +123,6 @@ fun HomeScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(bottom = 28.dp),
                 ) {
-                    // Screen title sits under the brand header, then a small gap to the cards.
                     Text(
                         text = stringResource(R.string.presets),
                         fontSize = 22.sp,
@@ -137,7 +134,11 @@ fun HomeScreen(
                             .padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 12.dp)
                             .testTag("presets_label"),
                     )
-                    CardStack(settings, preferences)
+                    CardStack(
+                        settings = settings,
+                        preferences = preferences,
+                        onRemove = { flying.add(it) },
+                    )
                 }
             }
         }
@@ -205,7 +206,7 @@ fun HomeScreen(
                 ) {
                     AppearanceDrawer(settings, darkTheme, onSettingsChange)
                 }
-                // Same top offset and same height as the X, so both baselines match.
+                // Same top offset and same height as the X, so both centre lines match.
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -225,11 +226,23 @@ fun HomeScreen(
             }
         }
 
+        // Dismissed boxes fly here: above the header, above the blur, never cropped.
+        if (flying.isNotEmpty()) {
+            Box(Modifier.fillMaxSize().zIndex(50f)) {
+                flying.toList().forEach { card ->
+                    key(card.key) {
+                        FlyingCardLayer(card) { flying.remove(card) }
+                    }
+                }
+            }
+        }
+
         // Fixed control: three dots morph into an X in the same spot.
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = safeTop + MenuTop, end = safeRight + 18.dp),
+                .padding(top = safeTop + MenuTop, end = safeRight + 18.dp)
+                .zIndex(60f),
         ) {
             MenuMorphButton(
                 openProgress = drawerProgress,
@@ -239,6 +252,10 @@ fun HomeScreen(
     }
 }
 
+/**
+ * Compact brand line: no circular icon, small REKEY set at the left edge with the
+ * version and device under it. The large wordmark lives only on the splash.
+ */
 @Composable
 private fun HomeHeader() {
     val deviceName = remember {
@@ -248,32 +265,22 @@ private fun HomeHeader() {
             "${maker.replaceFirstChar { it.uppercase() }} $model"
         } else model.replaceFirstChar { it.uppercase() }
     }
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 20.dp, end = 84.dp, top = MenuTop, bottom = 4.dp)
-            .height(60.dp)
             .testTag("home_header"),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.Start,
     ) {
-        Surface(
-            shape = CircleShape,
-            color = BrandWhite,
-            modifier = Modifier.size(44.dp),
+        RekeyWordmark(
+            fontSize = 19.sp,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Start,
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(
-                painter = painterResource(R.drawable.ic_brand_mark),
-                contentDescription = stringResource(R.string.brand_icon_description),
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            RekeyWordmark(
-                fontSize = 22.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Start,
-            )
             Text(
                 text = stringResource(R.string.version_prefix, BuildConfig.VERSION_NAME),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),

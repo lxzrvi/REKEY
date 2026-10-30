@@ -9,7 +9,6 @@ class RekeyPreferences(context: Context) {
 
     fun loadAppearance(): AppearanceSettings {
         val defaults = AppearanceSettings()
-        // accent_v3 only knows DEFAULT / CUSTOM. Older installs fall back to DEFAULT.
         val accent = runCatching {
             AccentChoice.valueOf(prefs.getString("accent_v3", null) ?: defaults.accent.name)
         }.getOrDefault(defaults.accent)
@@ -17,21 +16,18 @@ class RekeyPreferences(context: Context) {
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme", null) ?: defaults.themeMode.name) }.getOrDefault(defaults.themeMode),
             accent = accent,
             customColor = if (prefs.contains("custom_color")) prefs.getInt("custom_color", 0) else null,
-            textScale = prefs.getFloat("text_scale", defaults.textScale),
-        ).normalized()
+        )
     }
 
     fun saveAppearance(value: AppearanceSettings) {
-        val v = value.normalized()
         prefs.edit {
-            putString("theme", v.themeMode.name)
-            putString("accent_v3", v.accent.name)
-            if (v.customColor == null) remove("custom_color") else putInt("custom_color", v.customColor)
-            putFloat("text_scale", v.textScale)
-            // Retired controls: blur, corners, the old palette, motion and contrast.
+            putString("theme", value.themeMode.name)
+            putString("accent_v3", value.accent.name)
+            if (value.customColor == null) remove("custom_color") else putInt("custom_color", value.customColor)
+            // Retired controls: blur, corners, the old palette, motion, contrast, text size.
             remove("blur"); remove("blur_radius"); remove("corners")
             remove("accent"); remove("accent_v2")
-            remove("animations"); remove("contrast")
+            remove("animations"); remove("contrast"); remove("text_scale")
         }
     }
 

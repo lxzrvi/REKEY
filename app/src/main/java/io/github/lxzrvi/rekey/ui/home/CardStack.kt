@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -49,10 +50,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -61,6 +65,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -93,44 +98,53 @@ private val Descs = listOf(
     "Every new box joins the end of the stack.",
 )
 
-/** Swiping: no bounce, just smooth. */
 private val Smooth = spring<Float>(dampingRatio = 1f, stiffness = 120f)
-
-/** Re-slotting after add/remove: snappier, still no bounce. */
 private val SlotSpring = spring<Float>(dampingRatio = 1f, stiffness = 200f)
-
-/** Finger release below the dismiss threshold glides back to the slot. */
 private val ReturnSpring = spring<Float>(dampingRatio = 0.9f, stiffness = 260f)
-
-/** Removal glides away instead of snapping: gentle start, long tail. */
 private val ExitEasing = CubicBezierEasing(0.22f, 0.61f, 0.36f, 1f)
+
+/**
+ * A box that has left the stack. It is drawn by [HomeScreen] in a root-level
+ * overlay so the flight passes over the header instead of being clipped by the
+ * scrolling column.
+ */
+@Stable
+class FlyingCard(
+    val key: Int,
+    val cardId: Int,
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val direction: Float,
+    val rotation: Float,
+)
 
 @Stable
 private class CardItem(val id: Int, val animateIn: Boolean = true) {
     var removing by mutableStateOf(false)
     var gone by mutableStateOf(false)
     var frozenIndex = 0
-
-    /** Live finger offset, also used as the starting point of the removal flight. */
     var offsetY by mutableFloatStateOf(0f)
-
-    /** -1 flies up (the X, or an upward swipe), +1 flies down. */
     var exitDirection = -1f
     var returnJob: Job? = null
+    var bounds: Rect = Rect.Zero
+    var layoutW = 0f
+    var layoutH = 0f
 }
 
 private fun two(i: Int) = i.toString().padStart(2, '0')
 
 /**
- * Draggable card stack. A new card rises from below with a light overshoot; the X
- * slides a card up and away; a vertical swipe does the same while tracking the
- * finger. Only the two cards nearest the current position are drawn, so nothing
- * peeks through the gap mid-swipe.
+ * Draggable card stack. Behind-cards keep full brightness — depth comes only from
+ * scale and offset. Removal is handed to the root overlay so it can travel the
+ * full height of the screen.
  */
 @Composable
 fun CardStack(
     settings: AppearanceSettings,
     preferences: RekeyPreferences,
+    onRemove: (FlyingCard) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
@@ -139,10 +153,12 @@ fun CardStack(
         mutableStateListOf<CardItem>().apply { for (i in 1..initialCount) add(CardItem(i, animateIn = false)) }
     }
     var nextId by remember { mutableIntStateOf(initialCount + 1) }
+    var flightKey by remember { mutableIntStateOf(0) }
     val savedIndex = remember { preferences.loadSelectedCard().coerceIn(0, initialCount) }
     var pos by remember { mutableFloatStateOf(savedIndex + 1.6f) }
     var target by remember { mutableIntStateOf(savedIndex) }
     val job = remember { arrayOfNulls<Job>(1) }
+    val cardHPxHolder = remember { floatArrayOf(0f) }
 
     fun liveCount() = cards.count { !it.gone }
 
@@ -172,6 +188,25 @@ fun CardStack(
         item.returnJob?.cancel()
         item.exitDirection = if (item.offsetY > 0f) 1f else -1f
         item.removing = true
+
+        // Hand the box to the root overlay at its exact on-screen rectangle.
+        val b = item.bounds
+        val cardHPx = cardHPxHolder[0].takeIf { it > 0f } ?: b.height.takeIf { it > 0f } ?: 1f
+        if (b.width > 0f && b.height > 0f) {
+            onRemove(
+                FlyingCard(
+                    key = flightKey++,
+                    cardId = item.id,
+                    left = b.left,
+                    top = b.top,
+                    width = item.layoutW.takeIf { it > 0f } ?: b.width,
+                    height = item.layoutH.takeIf { it > 0f } ?: b.height,
+                    direction = item.exitDirection,
+                    rotation = (item.offsetY / cardHPx).coerceIn(-1f, 1f) * 3f,
+                ),
+            )
+        }
+
         scope.launch {
             delay(MotionContract.CARD_GAP_CLOSE_MILLIS)
             val live = cards.filter { !it.gone }
@@ -197,6 +232,7 @@ fun CardStack(
             val density = LocalDensity.current
             val wPx = with(density) { cardW.toPx() }
             val hPx = with(density) { cardH.toPx() }
+            cardHPxHolder[0] = hPx
             val stepPx = wPx * 0.5f
 
             val dragState = rememberDraggableState { delta ->
@@ -206,7 +242,6 @@ fun CardStack(
                 pos += if (out) d * 0.35f else d
             }
 
-            // Vertical drag belongs to the centered box and follows the finger 1:1.
             val verticalDrag = rememberDraggableState { delta ->
                 val item = cards.filter { !it.gone }.getOrNull(target) ?: return@rememberDraggableState
                 if (item.removing) return@rememberDraggableState
@@ -258,21 +293,27 @@ fun CardStack(
 
                 cards.forEach { item ->
                     key(item.id) {
-                        val idx = if (item.gone) item.frozenIndex else live.indexOf(item)
-                        StackCard(
-                            slotIndex = idx,
-                            pos = { pos },
-                            wPx = wPx,
-                            hPx = hPx,
-                            w = cardW,
-                            h = cardH,
-                            animateIn = item.animateIn,
-                            removing = item.removing,
-                            offsetY = { item.offsetY },
-                            exitDirection = item.exitDirection,
-                            onClick = { if (!item.removing && idx != target) settleTo(idx) },
-                        ) {
-                            BoxFace(item) { removeBox(item) }
+                        // While removing, the root overlay owns the visuals.
+                        if (!item.removing) {
+                            val idx = if (item.gone) item.frozenIndex else live.indexOf(item)
+                            StackCard(
+                                slotIndex = idx,
+                                pos = { pos },
+                                wPx = wPx,
+                                hPx = hPx,
+                                w = cardW,
+                                h = cardH,
+                                animateIn = item.animateIn,
+                                offsetY = { item.offsetY },
+                                onBounds = { rect, w, h ->
+                                    item.bounds = rect
+                                    item.layoutW = w
+                                    item.layoutH = h
+                                },
+                                onClick = { if (idx != target) settleTo(idx) },
+                            ) {
+                                CardFaceContents(item.id) { removeBox(item) }
+                            }
                         }
                     }
                 }
@@ -288,9 +329,8 @@ fun CardStack(
                         w = cardW,
                         h = cardH,
                         animateIn = false,
-                        removing = false,
                         offsetY = { 0f },
-                        exitDirection = -1f,
+                        onBounds = { _, _, _ -> },
                         onClick = { if (target != n) settleTo(n) else addBox() },
                     ) {
                         PlusButton(
@@ -310,7 +350,7 @@ fun CardStack(
         val trackColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.18f)
         val fillColor = MaterialTheme.colorScheme.onBackground
         Row(
-            Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 10.dp).testTag("card_position"),
+            Modifier.fillMaxWidth().padding(bottom = 10.dp).testTag("card_position"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -349,9 +389,8 @@ private fun StackCard(
     w: Dp,
     h: Dp,
     animateIn: Boolean,
-    removing: Boolean,
     offsetY: () -> Float,
-    exitDirection: Float,
+    onBounds: (Rect, Float, Float) -> Unit,
     onClick: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -361,22 +400,14 @@ private fun StackCard(
         label = "slot",
     )
 
-    // ADD: the new box rises from below with a slight spring overshoot.
     val appear = remember { Animatable(if (animateIn) 0f else 1f) }
     LaunchedEffect(Unit) {
         if (animateIn) appear.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 200f)) else appear.snapTo(1f)
     }
 
-    // REMOVE: one continuous glide from wherever the finger left the card.
-    val exit = animateFloatAsState(
-        targetValue = if (removing) 1f else 0f,
-        animationSpec = tween(MotionContract.CARD_EXIT_MILLIS, easing = ExitEasing),
-        label = "exit",
-    )
-
     val entering by remember { derivedStateOf { appear.value < 0.98f } }
     val z by remember { derivedStateOf { 1000 - (abs(slot.value - pos()) * 20f).roundToInt() } }
-    val zi = if (removing) 5000f else z.toFloat() + if (entering) 2f else 0f
+    val zi = z.toFloat() + if (entering) 2f else 0f
 
     Box(
         Modifier
@@ -391,28 +422,28 @@ private fun StackCard(
                 translationX = wPx * (0.32f * tanh(0.75f * d) + 0.38f * s * bump)
 
                 val ap = appear.value
-                val ex = exit.value
                 val drag = offsetY()
-                val flight = drag + exitDirection * hPx * 1.35f * ex
-                translationY = (1f - ap) * hPx * 0.5f + flight
-                rotationZ = (drag / hPx).coerceIn(-1f, 1f) * 3f * (1f - ex)
+                translationY = (1f - ap) * hPx * 0.5f + drag
+                rotationZ = (drag / hPx).coerceIn(-1f, 1f) * 3f
 
-                // Only the current card and its immediate neighbours exist on screen.
-                // Anything further out is fully transparent, so the gap between two
-                // cards never reveals the box behind them.
+                // Only the current box and its immediate neighbours are drawn.
                 val beyond = ((a - 1f) / 0.3f).coerceIn(0f, 1f)
                 val visibility = 1f - beyond * beyond * (3f - 2f * beyond)
-                val dragFade = 1f - 0.45f * (abs(drag) / (hPx * 0.9f)).coerceIn(0f, 1f)
-                val sc = (0.7f + 0.3f * exp(-a * a * 0.35f)) *
-                    (0.86f + 0.14f * ap) *
-                    (1f - 0.08f * ex)
+                val sc = (0.7f + 0.3f * exp(-a * a * 0.35f)) * (0.86f + 0.14f * ap)
                 scaleX = sc
                 scaleY = sc
-                alpha = visibility * dragFade * (ap * 1.8f).coerceIn(0f, 1f) * (1f - ex * ex).coerceIn(0f, 1f)
+                alpha = visibility * (ap * 1.8f).coerceIn(0f, 1f)
+            }
+            .onGloballyPositioned { coords ->
+                val origin = coords.positionInRoot()
+                onBounds(
+                    Rect(origin.x, origin.y, origin.x + coords.size.width, origin.y + coords.size.height),
+                    coords.size.width.toFloat(),
+                    coords.size.height.toFloat(),
+                )
             }
             .clip(RoundedCornerShape(GlassContract.CORNER_DP.dp))
             .background(MaterialTheme.colorScheme.surface)
-            // The page is white now, so a hairline keeps each box readable on the pattern.
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
@@ -425,22 +456,66 @@ private fun StackCard(
             ),
     ) {
         content()
-        Box(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer {
-                    val a = abs(slot.value - pos())
-                    alpha = 0.62f * (1f - exp(-a * a * 0.9f))
-                }
-                .background(Color.Black),
-        )
     }
 }
 
+/**
+ * The dismissed box, drawn above everything else at root level. It keeps its
+ * exact size and start position, then travels past the top (or bottom) edge —
+ * over the header, never clipped by it.
+ */
 @Composable
-private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
+fun FlyingCardLayer(card: FlyingCard, onFinished: () -> Unit) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(card.key) {
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(MotionContract.CARD_EXIT_MILLIS, easing = ExitEasing),
+        )
+        onFinished()
+    }
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val screenH = with(density) { maxHeight.toPx() }
+        val travel = if (card.direction < 0f) card.top + card.height + 60f else screenH - card.top + 60f
+        Box(
+            Modifier
+                .offset {
+                    IntOffset(
+                        card.left.roundToInt(),
+                        (card.top + card.direction * travel * progress.value).roundToInt(),
+                    )
+                }
+                .size(
+                    with(density) { card.width.toDp() },
+                    with(density) { card.height.toDp() },
+                )
+                .graphicsLayer {
+                    val p = progress.value
+                    alpha = (1f - p * p).coerceIn(0f, 1f)
+                    val sc = 1f - 0.06f * p
+                    scaleX = sc
+                    scaleY = sc
+                    rotationZ = card.rotation * (1f - p)
+                }
+                .clip(RoundedCornerShape(GlassContract.CORNER_DP.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(GlassContract.CORNER_DP.dp),
+                ),
+        ) {
+            CardFaceContents(card.cardId, onRemove = {})
+        }
+    }
+}
+
+/** Shared face so the flying copy looks exactly like the box it came from. */
+@Composable
+private fun CardFaceContents(cardId: Int, onRemove: () -> Unit) {
     val onSurface = MaterialTheme.colorScheme.onSurface
-    val removeDescription = stringResource(R.string.remove_card_description, item.id)
+    val removeDescription = stringResource(R.string.remove_card_description, cardId)
     Column(
         Modifier.fillMaxSize().padding(start = 18.dp, top = 14.dp, end = 16.dp, bottom = 18.dp),
         verticalArrangement = Arrangement.SpaceBetween,
@@ -451,7 +526,7 @@ private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
             verticalAlignment = Alignment.Top,
         ) {
             Text(
-                text = stringResource(R.string.card_box_label, item.id),
+                text = stringResource(R.string.card_box_label, cardId),
                 color = onSurface.copy(alpha = 0.7f),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
@@ -479,7 +554,7 @@ private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
         }
         Column {
             Text(
-                text = Names[(item.id - 1) % Names.size],
+                text = Names[(cardId - 1) % Names.size],
                 color = onSurface,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
@@ -487,7 +562,7 @@ private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = Descs[(item.id - 1) % Descs.size],
+                text = Descs[(cardId - 1) % Descs.size],
                 color = onSurface.copy(alpha = 0.68f),
                 fontSize = 12.sp,
                 lineHeight = 17.sp,

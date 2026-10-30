@@ -21,7 +21,7 @@ object MotionContract {
     const val DRAWER_ENTER_MILLIS = 360
     const val DRAWER_EXIT_MILLIS = 280
     const val CARD_SETTLE_MILLIS = 420
-    const val CARD_EXIT_MILLIS = 480
+    const val CARD_EXIT_MILLIS = 520
     const val CARD_GAP_CLOSE_MILLIS = 130L
 }
 
@@ -31,6 +31,11 @@ object GlassContract {
     const val BLUR_DP = 15f
     const val CORNER_DP = 15f
     const val NOISE_FACTOR = 0f
+}
+
+/** Text size is locked to the old S step; the drawer no longer offers a choice. */
+object TypeContract {
+    const val TEXT_SCALE = 0.9f
 }
 
 /** The squiggle background is drawn from the same geometry as the launcher icon. */
