@@ -12,13 +12,13 @@ Updated: 2026-10-30 (Asia/Kolkata)
 
 ## Latest verified release-only build
 
-- Version: 0.4.0 (versionCode 4)
-- Commit: `eda5cab`
-- Run: https://github.com/lxzrvi/REKEY/actions/runs/41053368289
-- Result: success; single `Build release APK` job.
-- Gradle build step: 46 seconds. End-to-end GitHub job: 75 seconds including setup and upload.
-- Artifact: `app-release-unsigned.apk`, id `12974919722`, 23,863,354 bytes.
-- SHA-256: `9dbbfde521ebfb2b3170abedcd995e1c0fbcc376a30a0f9f8d69b7fa7543b824`.
+- Version: 0.5.0 (versionCode 5)
+- Commit: `acf5a3c`
+- Run: https://github.com/lxzrvi/REKEY/actions/runs/41063719899
+- Result: success on the first attempt; single `Build release APK` job.
+- Gradle build step: 2m 36s on this run (cold dependency cache after the palette/settings change). The previous warm-cache run built in 46s.
+- Artifact: `app-release-unsigned.apk`, id `12980987822`, 23,860,850 bytes.
+- SHA-256: `616cf1223bedc7fabf2020fe378010e15226a0dfb7d3e001f46d67346fdd392d`.
 
 Check the live badge/Actions page for the current head result:
 
