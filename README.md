@@ -2,55 +2,54 @@
 
 [![Android Release CI](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml/badge.svg?branch=main)](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml?query=branch%3Amain)
 
-An Android app built with Kotlin and Jetpack Compose.
-
-**Current stage: foundation only.** The product brief has not been provided yet. The current screen demonstrates the design system and native motion; it does not implement assumed product features.
+Kotlin/Jetpack Compose Android app. The product brief is still pending; the current screen demonstrates branding, appearance controls and demo cards only.
 
 ## Build policy
 
-- **APK builds happen on GitHub Actions only.** The shared workspace contains source, not generated APKs or deliverable reports.
-- **The only uploaded artifact is the release APK:** `app-release-unsigned.apk`.
-- No debug APK, report archive, mapping file, screenshot or other deliverable is uploaded.
-- Emulator checks use temporary test builds on the GitHub runner; results remain in job logs and are not uploaded as files.
-- No production keystore is configured. The release APK is unsigned, not Play Store-ready, and cannot be installed as a normal signed release.
+- APK builds happen on **GitHub Actions only**.
+- The workflow builds **only the release APK** and uploads only `app-release-unsigned.apk`.
+- No unit-test, lint or emulator job is part of the release workflow.
+- No debug APK, report, mapping, screenshot or other deliverable is uploaded.
+- No production keystore is configured. The APK is unsigned and not Play Store-ready.
 
-## Foundation
+## Current app
 
-- Kotlin through Android Gradle Plugin 9.4.1's built-in Kotlin support.
-- Jetpack Compose with the stable `2026.09.00` BOM and Material 3.
-- Compile/target SDK 37.0; minimum SDK 26 (Android 8.0).
-- Offline Poppins Thin, Regular, Medium and Bold, with the SIL Open Font License.
-- Monochrome light/dark themes, adaptive black launcher icon and Android 12+ splash.
-- White wordmark on a dark surface. **Holiday by Letterhend Studio is selected but not yet licensed/bundled; the visible wordmark is a marked Poppins fallback.**
-- Native Compose animation with system animator-duration scaling.
-- Release-variant JVM tests, lint and instrumented Compose interaction/recreation checks.
+- `REKEY` wordmark in Allura; all other text uses Poppins.
+- Circular white logo with black REKEY text; launcher icon uses a white background and black text.
+- Edge-to-edge Compose UI with safe-area handling.
+- Haze 2.0.1 pure live blur: top/bottom edge blur and full-screen blur behind the appearance drawer. No tint, noise or background color is added to the blur.
+- Infinite circular card carousel with a 3D rotate/scale feel.
+- Appearance drawer with theme, accent presets, custom color wheel + hex input, blur strength, corner radius, text size, animations and high contrast.
+- Thin thumb-less sliders; long press a slider to reset it.
+- Local persistence for appearance and demo-card state.
+
+## Toolchain
+
+- Gradle 9.7.1, AGP 9.4.1, Kotlin/Compose compiler 2.4.20.
+- Compose BOM 2026.09.00, Material 3, Haze 2.0.1 + haze-blur 2.0.1.
+- Compile/target SDK 37.0, minimum SDK 31, Java/Kotlin bytecode 17.
+- Release packaging is intentionally unminified to keep the GitHub-only release path fast.
 
 ## GitHub Actions
 
-`.github/workflows/android-ci.yml` runs on relevant branch pushes, pull requests to `main`, and manual dispatch.
-
-The release job runs `:app:assembleRelease :app:testReleaseUnitTest :app:lintRelease`, then uploads only the unsigned release APK. The runtime job checks launching and UI behavior on an API 35 emulator without uploading test files.
-
-The foundation previously passed its complete build and emulator workflow: [baseline run 40991187588](https://github.com/lxzrvi/REKEY/actions/runs/40991187588). The badge links to the latest `main` verification, including the release-only artifact policy. See [docs/STATUS.md](docs/STATUS.md) for historical evidence and limitations.
+`.github/workflows/android-ci.yml` runs on pushes to `main` and manual dispatch. It runs `:app:assembleRelease` and uploads the unsigned release APK directly (`archive: false`). All work is kept on `main`.
 
 ## Source structure
 
 ```text
 app/src/main/java/io/github/lxzrvi/rekey/
-  design/                 Platform-independent design decisions
-  ui/brand/               Brand typography integration point
-  ui/components/          Reusable brand components
+  data/                   Local appearance/card preferences
+  design/                 Design contracts
+  ui/app/                 App composition
+  ui/blur/                Haze 2 pure blur helpers
+  ui/brand/               Allura wordmark typography
+  ui/components/          Wordmark and splash
+  ui/home/                Header, carousel, drawer, menu morph
   ui/theme/               Poppins, colors and Material theme
-  ui/foundation/          Temporary foundation screen
   MainActivity.kt         Edge-to-edge entry point
 app/src/main/res/         Fonts, strings, themes and vector icons
-app/src/test/             JVM tests
-app/src/androidTest/      Compose UI tests
-.github/workflows/        GitHub-only release build
-scripts/                  Ephemeral emulator checks
+.github/workflows/        GitHub-only release APK build
 ```
-
-Use an Android Studio release supporting AGP 9.4.1 for source editing. Do not generate APK deliverables in the shared workspace; use the GitHub workflow.
 
 ## Docs
 
@@ -60,4 +59,4 @@ Use an Android Studio release supporting AGP 9.4.1 for source editing. Do not ge
 - [Change log](CHANGELOG.md)
 - [Verification status](docs/STATUS.md)
 
-The application ID `io.github.lxzrvi.rekey` is provisional and should be confirmed before the first store release. No application-code license has been chosen without the owner's decision; Poppins has its own included OFL.
+The application ID `io.github.lxzrvi.rekey` is provisional. No application-code license has been chosen; Allura and Poppins include their SIL OFL licenses.

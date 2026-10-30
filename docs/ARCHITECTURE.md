@@ -1,46 +1,33 @@
-# Foundation architecture decisions
+# Architecture decisions
 
 ## ADR 001: Native Android, Kotlin and Compose
 
-The owner requested Kotlin. This is currently a single Android application module using Jetpack Compose and Material 3. No cross-platform runtime, WebView shell or XML screen layout is introduced. XML remains appropriate for Android manifests, resources, adaptive icons and splash themes.
+REKEY is a single Android application module using Jetpack Compose and Material 3. XML remains for manifests, resources, adaptive icons and splash themes.
 
 ## ADR 002: Wait for the product brief
 
-The repository originally contained only a README. The first screen is explicitly a development foundation. Navigation, networking, persistence, authentication, account models and domain features will be chosen when the actual app requirements are known. Adding them now would create speculative code and unnecessary permissions.
+The current screen demonstrates branding, appearance controls and demo cards. Product navigation, networking, authentication and domain features will be chosen when the owner supplies the actual app requirements. The provisional application ID is `io.github.lxzrvi.rekey`.
 
-The provisional application ID is `io.github.lxzrvi.rekey`. Confirm it before publishing; changing it after release creates a different app identity.
+## ADR 003: Typography and brand colors
 
-## ADR 003: Centralized typography and fixed brand colors
+Allura is bundled only for the REKEY wordmark/icon. Poppins is bundled in four weights for UI text. Brand typography is separate from UI typography. OEM dynamic color is disabled to preserve the monochrome brand carrier; accent color is user-selectable, including a custom color wheel and hex input.
 
-Poppins is bundled in four real weights. The Material type scale is defined centrally. Brand typography is separate from UI typography, so the licensed Letterhend Holiday file can replace the current marked fallback without changing every screen.
+## ADR 004: Pure live blur with Haze 2
 
-The brand is deliberately monochrome. OEM dynamic color is disabled to preserve it. Light and dark themes are both supported; logo and icon carrier colors remain fixed to preserve contrast.
+`ui/blur/LiveBlur.kt` wraps Haze 2.0.1 + haze-blur 2.0.1. Blur styles set `noiseFactor(0f)`, `backgroundColor(Color.Transparent)` and `colorEffects(emptyList())`. Top/bottom edges use progressive vertical gradients; the appearance drawer uses a full-screen blur that fades with the drawer. The header itself is not boxed or blurred.
 
-## ADR 004: Native animation first
+## ADR 005: Local state only
 
-The foundation uses Compose `AnimatedVisibility`, fade and vertical size transitions with bounded durations. Compose honors Android's Animator duration scale. There is no infinite animation, animation service or additional animation SDK.
+`data/RekeyPreferences.kt` persists appearance and demo-card state in SharedPreferences. `rememberSaveable` preserves transient UI state through recreation. No account, network permission or analytics is introduced.
 
-Evaluate Lottie only for a real designer-authored vector animation; consider other tools only if the feature genuinely needs them. Avoid adding a dependency just because an animation might exist later.
+## ADR 006: Release-only GitHub CI
 
-## ADR 005: Small, testable foundation
-
-- `design/DesignContract.kt` holds platform-independent design decisions.
-- `ui/theme` owns colors, typography and shapes.
-- `ui/brand` owns the brand-font integration point.
-- `ui/components` owns reusable brand presentation.
-- `ui/foundation` is temporary and can be replaced when product screens arrive.
-- `rememberSaveable` preserves the demo's interaction state through recreation.
-
-JVM tests check basic design contracts. Emulator tests exercise actual Compose rendering, interaction and activity recreation. Neither replaces feature-level tests when real business logic is added.
-
-## ADR 006: Secure, reproducible CI
-
-The Gradle distribution and wrapper are checksum-pinned. Dependencies use a version catalog and a stable Compose BOM. GitHub Actions are SHA-pinned. CI has no write permissions or signing secrets. Release shrinking is checked without pretending that an unsigned APK is production-signed.
+The workflow runs only `:app:assembleRelease` on `main` and uploads only `app-release-unsigned.apk`. R8/resource shrinking are disabled for speed. Unit tests, lint and emulator checks are not part of this release path by owner request. The Gradle wrapper and GitHub Actions are checksum/SHA-pinned. CI has read-only permissions and no signing secrets.
 
 ## Deliberate defaults to confirm later
 
-- Minimum Android 8.0 / API 26.
-- Phone-first adaptive layout, scrollable and capped at 640 dp content width.
-- English foundation copy; product languages are not yet specified.
+- Minimum Android 12 / API 31.
+- Phone-first adaptive layout with safe-area handling.
+- English UI copy; product languages are not yet specified.
 - No analytics, ads, tracking, account system or network permission.
 - No app-code license selected by the agent on the owner's behalf.

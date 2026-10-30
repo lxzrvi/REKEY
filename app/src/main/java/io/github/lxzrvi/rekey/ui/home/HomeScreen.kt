@@ -5,9 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -15,20 +13,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,27 +40,30 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
-import dev.chrisbanes.haze.HazeState
 import io.github.lxzrvi.rekey.BuildConfig
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.design.MotionContract
+import io.github.lxzrvi.rekey.ui.blur.fullScreenBlur
+import io.github.lxzrvi.rekey.ui.blur.liveBlur
+import io.github.lxzrvi.rekey.ui.blur.liveBlurSource
+import io.github.lxzrvi.rekey.ui.blur.rememberLiveBlurState
+import io.github.lxzrvi.rekey.ui.blur.topEdgeBlur
+import io.github.lxzrvi.rekey.ui.blur.bottomEdgeBlur
 import io.github.lxzrvi.rekey.ui.components.RekeyWordmark
-import io.github.lxzrvi.rekey.ui.glass.glass
-import io.github.lxzrvi.rekey.ui.glass.glassSource
-import io.github.lxzrvi.rekey.ui.glass.rememberGlassState
-import io.github.lxzrvi.rekey.ui.theme.BrandBlack
 import io.github.lxzrvi.rekey.ui.theme.BrandWhite
 import io.github.lxzrvi.rekey.ui.theme.color
 
@@ -73,8 +75,7 @@ fun HomeScreen(
     darkTheme: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val backgroundGlass = rememberGlassState()
-    val drawerGlass = rememberGlassState()
+    val blurState = rememberLiveBlurState()
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
     val drawerProgress by animateFloatAsState(
         targetValue = if (drawerOpen) 1f else 0f,
@@ -87,74 +88,97 @@ fun HomeScreen(
     BackHandler(enabled = drawerOpen) { drawerOpen = false }
 
     BoxWithConstraints(modifier.fillMaxSize().testTag("home")) {
-        val drawerWidth = minOf(maxWidth - 72.dp, 360.dp)
+        val drawerWidth = minOf(maxWidth - 56.dp, 360.dp)
         val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
         val safeTop = safeInsets.calculateTopPadding()
-        val safeRight = safeInsets.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr)
+        val safeBottom = safeInsets.calculateBottomPadding()
+        val safeRight = safeInsets.calculateRightPadding(LayoutDirection.Ltr)
+        val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val closedX = maxWidth - safeRight - 20.dp - 48.dp
-        val openX = maxWidth - drawerWidth - 24.dp
+        val openX = maxWidth - drawerWidth + 12.dp
         val menuX = lerp(closedX, openX, drawerProgress)
-        val menuY = safeTop + 32.dp
+        val menuY = safeTop + 20.dp
+        val accent = settings.accent.color(darkTheme, settings.customColor)
 
-        // Source 1: ambient color behind the glass header/cards.
-        AmbientBackground(
-            accent = settings.accent.color(darkTheme),
-            darkTheme = darkTheme,
-            modifier = Modifier.glassSource(backgroundGlass),
-        )
-
-        // Source 2: the whole home page behind the sliding drawer. Both sources are siblings of their effects.
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .glassSource(drawerGlass)
-                .windowInsetsPadding(WindowInsets.safeDrawing),
-        ) {
-            HomeHeader(settings, backgroundGlass, darkTheme)
+        Box(Modifier.fillMaxSize().liveBlurSource(blurState)) {
+            AmbientBackground(accent = accent, darkTheme = darkTheme)
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = 20.dp, bottom = 28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
-                CardCarousel(settings, backgroundGlass, preferences)
+                HomeHeader(darkTheme)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(top = 12.dp, bottom = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CardCarousel(settings, preferences)
+                }
             }
         }
+
+        // Edge blur only: the header itself stays crisp and unboxed.
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(topInset + 10.dp)
+                .liveBlur(blurState, topEdgeBlur(settings.blurRadius.dp, settings.blurEnabled)),
+        )
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(bottomInset + 96.dp)
+                .liveBlur(blurState, bottomEdgeBlur(settings.blurRadius.dp, settings.blurEnabled)),
+        )
 
         if (drawerProgress > 0f) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.32f * drawerProgress))
+                    .graphicsLayer { alpha = drawerProgress }
+                    .liveBlur(blurState, fullScreenBlur(30.dp, settings.blurEnabled))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = { drawerOpen = false },
                     ),
             )
+            val borderColor = MaterialTheme.colorScheme.outline.copy(alpha = if (settings.highContrast) 0.9f else 0.55f)
             Surface(
-                shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
-                color = Color.Transparent,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .width(drawerWidth)
                     .fillMaxHeight()
                     .graphicsLayer { translationX = drawerWidth.toPx() * (1f - drawerProgress) }
-                    .glass(drawerGlass, RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp), settings.blurRadius.dp, settings.blurEnabled)
+                    .drawWithContent {
+                        drawContent()
+                        drawLine(
+                            color = borderColor,
+                            start = Offset(0f, 0f),
+                            end = Offset(0f, size.height),
+                            strokeWidth = 1.dp.toPx(),
+                        )
+                    }
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
                     ),
             ) {
-                AppearanceDrawer(settings, darkTheme, onSettingsChange)
+                Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                    AppearanceDrawer(settings, darkTheme, onSettingsChange)
+                }
             }
         }
 
-        // The same button travels from the header's right edge to the drawer's left edge.
         MenuMorphButton(
             openProgress = drawerProgress,
             onClick = { drawerOpen = !drawerOpen },
@@ -164,7 +188,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader(settings: AppearanceSettings, glassState: HazeState, darkTheme: Boolean) {
+private fun HomeHeader(darkTheme: Boolean) {
     val deviceName = remember {
         val model = Build.MODEL.orEmpty().ifBlank { "Android device" }
         val maker = Build.MANUFACTURER.orEmpty()
@@ -172,48 +196,39 @@ private fun HomeHeader(settings: AppearanceSettings, glassState: HazeState, dark
             "${maker.replaceFirstChar { it.uppercase() }} $model"
         } else model.replaceFirstChar { it.uppercase() }
     }
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = Color.Transparent,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (settings.highContrast) 0.9f else 0.4f)),
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 12.dp)
-            .height(88.dp)
-            .testTag("home_header")
-            .glass(glassState, MaterialTheme.shapes.large, settings.blurRadius.dp, settings.blurEnabled),
+            .padding(start = 20.dp, end = 80.dp, top = 16.dp, bottom = 8.dp)
+            .height(72.dp)
+            .testTag("home_header"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(start = 14.dp, end = 68.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Surface(
+            shape = CircleShape,
+            color = BrandWhite,
+            modifier = Modifier.size(56.dp),
         ) {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = BrandBlack,
-                border = BorderStroke(1.dp, BrandWhite.copy(alpha = 0.18f)),
-                modifier = Modifier.size(56.dp),
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_brand_mark),
-                    contentDescription = stringResource(R.string.brand_icon_description),
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                RekeyWordmark(fontSize = 34.sp, color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Start)
-                Text(
-                    text = stringResource(R.string.version_prefix, BuildConfig.VERSION_NAME),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = deviceName,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
-            }
+            Image(
+                painter = painterResource(R.drawable.ic_brand_mark),
+                contentDescription = stringResource(R.string.brand_icon_description),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            RekeyWordmark(fontSize = 32.sp, color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Start)
+            Text(
+                text = stringResource(R.string.version_prefix, BuildConfig.VERSION_NAME),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = deviceName,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
         }
     }
 }

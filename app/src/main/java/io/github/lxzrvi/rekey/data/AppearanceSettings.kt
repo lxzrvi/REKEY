@@ -3,12 +3,13 @@ package io.github.lxzrvi.rekey.data
 import io.github.lxzrvi.rekey.design.GlassContract
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
-enum class AccentPalette { ICE, VIOLET, MINT, AMBER }
+enum class AccentPalette { ICE, VIOLET, MINT, AMBER, CUSTOM }
 
 /** Appearance-only preferences; no product behavior is inferred from the demo cards. */
 data class AppearanceSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val accent: AccentPalette = AccentPalette.ICE,
+    val customColor: Int? = null,
     val blurEnabled: Boolean = true,
     val blurRadius: Float = GlassContract.DEFAULT_BLUR_DP,
     val cornerRadius: Float = 24f,

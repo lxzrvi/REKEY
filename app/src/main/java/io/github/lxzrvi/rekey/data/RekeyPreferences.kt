@@ -12,6 +12,7 @@ class RekeyPreferences(context: Context) {
         return AppearanceSettings(
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme", null) ?: defaults.themeMode.name) }.getOrDefault(defaults.themeMode),
             accent = runCatching { AccentPalette.valueOf(prefs.getString("accent", null) ?: defaults.accent.name) }.getOrDefault(defaults.accent),
+            customColor = if (prefs.contains("custom_color")) prefs.getInt("custom_color", 0) else null,
             blurEnabled = prefs.getBoolean("blur", defaults.blurEnabled),
             blurRadius = prefs.getFloat("blur_radius", defaults.blurRadius),
             cornerRadius = prefs.getFloat("corners", defaults.cornerRadius),
@@ -26,6 +27,7 @@ class RekeyPreferences(context: Context) {
         prefs.edit {
             putString("theme", v.themeMode.name)
             putString("accent", v.accent.name)
+            if (v.customColor == null) remove("custom_color") else putInt("custom_color", v.customColor)
             putBoolean("blur", v.blurEnabled)
             putFloat("blur_radius", v.blurRadius)
             putFloat("corners", v.cornerRadius)

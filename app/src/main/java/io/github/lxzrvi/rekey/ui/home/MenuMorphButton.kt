@@ -1,6 +1,5 @@
 package io.github.lxzrvi.rekey.ui.home
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -22,24 +21,16 @@ import io.github.lxzrvi.rekey.R
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** One shared control: three vertical dots morph into X while travelling with the drawer. */
+/** Shared three-dot/X control. When open it sits inside the drawer's left edge. */
 @Composable
-fun MenuMorphButton(
-    openProgress: Float,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
+fun MenuMorphButton(openProgress: Float, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val description = stringResource(if (openProgress > 0.5f) R.string.close_appearance else R.string.open_appearance)
     val iconColor = MaterialTheme.colorScheme.onBackground
     Surface(
         onClick = onClick,
         shape = CircleShape,
         color = Color.Transparent,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
-        modifier = modifier
-            .size(48.dp)
-            .testTag("menu_toggle")
-            .semantics { contentDescription = description },
+        modifier = modifier.size(48.dp).testTag("menu_toggle").semantics { contentDescription = description },
     ) {
         Box(contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(24.dp)) {

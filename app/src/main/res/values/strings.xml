@@ -15,8 +15,14 @@
     <string name="accent_violet">Violet</string>
     <string name="accent_mint">Mint</string>
     <string name="accent_amber">Amber</string>
-    <string name="glass_blur">Glass blur</string>
-    <string name="glass_blur_description">Pure background blur, without tint or noise.</string>
+    <string name="accent_custom">Custom</string>
+    <string name="custom_color_wheel">Custom color wheel</string>
+    <string name="hex_color">Hex color</string>
+    <string name="apply">Apply</string>
+    <string name="invalid_hex">Use a 6-digit hex color, e.g. #7A5CFF</string>
+    <string name="long_press_reset">Long press a slider to reset it</string>
+    <string name="glass_blur">Live blur</string>
+    <string name="glass_blur_description">Pure edge and menu blur, without tint or noise.</string>
     <string name="blur_strength">Blur strength</string>
     <string name="corner_radius">Corner radius</string>
     <string name="text_size">Text size</string>

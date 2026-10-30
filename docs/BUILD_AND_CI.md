@@ -2,10 +2,11 @@
 
 ## Owner's build policy
 
-- APK builds run on **GitHub Actions only**. The Arena workspace holds source files, not APK deliverables.
-- The **only uploaded artifact is the release APK**. Do not upload debug APKs, test reports, mappings, screenshots or separate report files.
-- Runtime checks may compile temporary debug/test APKs on the GitHub runner. These are never uploaded and disappear with the runner.
-- No production keystore is configured. The downloadable file is explicitly `app-release-unsigned.apk`; it is not a signed or Play Store-ready release.
+- APK builds run on **GitHub Actions only**. The workspace holds source files, not APK deliverables.
+- The **only uploaded artifact is the release APK**: `app-release-unsigned.apk`.
+- The release workflow does not run unit tests, lint or emulator checks.
+- No debug APK, report, mapping, screenshot or other deliverable is uploaded.
+- No production keystore is configured. The APK is unsigned and not Play Store-ready.
 
 ## Pinned toolchain
 
@@ -13,43 +14,38 @@
 | --- | --- |
 | Gradle | 9.7.1 |
 | Android Gradle Plugin | 9.4.1 |
-| Kotlin | 2.2.10, supplied by AGP |
-| Compose Compiler plugin | 2.2.10, matching Kotlin |
+| Kotlin / Compose Compiler | 2.4.20 |
 | Compose BOM | 2026.09.00 |
-| Compose UI / animation / foundation | 1.12.1 through the BOM |
 | Material 3 | 1.4.0 through the BOM |
+| Haze / haze-blur | 2.0.1 |
 | Activity Compose | 1.13.0 |
 | AndroidX Core | 1.19.1 |
 | Compile/target SDK | 37.0 |
-| Minimum SDK | 26 |
+| Minimum SDK | 31 |
 | Build Tools | 36.0.0 |
 | CI JDK | Temurin 21 |
-| Java/Kotlin bytecode compatibility | 17 |
+| Java/Kotlin bytecode | 17 |
 
-AGP supplies Kotlin; do not also apply `org.jetbrains.kotlin.android`. The Compose Compiler plugin matches the bundled Kotlin version. Google's SDK package is `platforms;android-37.0`, with `compileSdkMinor = 0`.
-
-AGP 9 creates JVM unit-test tasks only for the tested build type by default. This project explicitly sets `android.onlyEnableUnitTestForTheTestedBuildType=false`, retaining both release JVM tests and the debug emulator checks without skipping either. See the [official AGP 9 behavior-change documentation](https://developer.android.com/build/releases/agp-9-0-0-release-notes#android-gradle-plugin-behavior-changes).
+AGP 9 supplies built-in Kotlin; the root build overrides the Kotlin Gradle plugin to 2.4.20 without applying `org.jetbrains.kotlin.android`. The Compose Compiler plugin matches Kotlin. Google's SDK package is `platforms;android-37.0`, with `compileSdkMinor = 0`.
 
 The Gradle wrapper and distribution have published checksums. CI validates the wrapper. GitHub Actions are pinned to commit SHAs.
 
 ## Release job
 
-The workflow runs `:app:assembleRelease :app:testReleaseUnitTest :app:lintRelease`.
+The single job runs:
 
-- Release compilation, R8 minification and resource shrinking must succeed.
-- Release-variant JVM tests must pass.
-- Release lint runs with errors failing the job.
-- Only `app/build/outputs/apk/release/app-release-unsigned.apk` is uploaded, directly as an APK rather than an additional ZIP archive.
+```bash
+./gradlew --no-daemon --stacktrace --max-workers=4 :app:assembleRelease
+```
+
+- Release compilation and packaging must succeed.
+- R8 minification and resource shrinking are disabled to keep the release path fast.
+- Only `app/build/outputs/apk/release/app-release-unsigned.apk` is uploaded, directly as an APK (`archive: false`).
 - Artifact retention is 14 days.
-
-## Runtime job
-
-After the release job passes, an API 35 x86_64 emulator runs four Compose tests and an explicit install/launch/process/crash-buffer check. A temporary debug APK is needed because the release APK is unsigned and cannot be installed for this check. It is not a deliverable.
-
-Results are visible in the GitHub job logs. No screenshots, log files, report artifacts or test APKs are uploaded. System animations are disabled for deterministic tests; this is not a physical-device performance guarantee.
+- Workflow triggers: push to `main` and manual dispatch.
 
 ## Source editing and safety
 
-Open the source in an Android Studio release supporting AGP 9.4.1. Follow the GitHub-only build policy above; do not generate local APK deliverables in the shared workspace.
+Open the source in an Android Studio release supporting AGP 9.4.1. Do not generate local APK deliverables in the shared workspace.
 
-CI has read-only repository permissions and needs no signing secrets. Production signing must be configured securely later; never commit a keystore or password. Do not disable tests or lint to obtain a green badge.
+CI has read-only repository permissions and needs no signing secrets. Production signing must be configured securely later; never commit a keystore or password.

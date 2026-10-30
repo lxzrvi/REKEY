@@ -32,11 +32,12 @@ private val DarkColors = darkColorScheme(
     outline = DarkOutline, outlineVariant = DarkOutline,
 )
 
-fun AccentPalette.color(darkTheme: Boolean): Color = when (this) {
+fun AccentPalette.color(darkTheme: Boolean, customColor: Int? = null): Color = when (this) {
     AccentPalette.ICE -> if (darkTheme) Color(0xFF9DD8FF) else Color(0xFF286C9E)
     AccentPalette.VIOLET -> if (darkTheme) Color(0xFFC7B5FF) else Color(0xFF6B4BB8)
     AccentPalette.MINT -> if (darkTheme) Color(0xFF9FE8CB) else Color(0xFF237A5B)
     AccentPalette.AMBER -> if (darkTheme) Color(0xFFFFD28F) else Color(0xFF9A6200)
+    AccentPalette.CUSTOM -> customColor?.let { Color(it) } ?: if (darkTheme) Color(0xFF9DD8FF) else Color(0xFF286C9E)
 }
 
 @Composable
@@ -46,7 +47,7 @@ fun RekeyTheme(
     content: @Composable () -> Unit,
 ) {
     val base = if (darkTheme) DarkColors else LightColors
-    val accent = settings.accent.color(darkTheme)
+    val accent = settings.accent.color(darkTheme, settings.customColor)
     val colors = base.copy(
         primary = accent,
         secondary = accent,

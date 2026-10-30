@@ -1,6 +1,6 @@
 package io.github.lxzrvi.rekey.design
 
-/** Platform-independent contracts checked by JVM tests. */
+/** Platform-independent design contracts. */
 object BrandContract {
     const val APP_NAME = "REKEY"
     const val LOGO_ARGB = 0xFFFFFFFF

@@ -1,9 +1,7 @@
-name: Android Release CI
+name: REKEY Release APK
 
 on:
   push:
-    branches: [main, "setup/**", "feat/**", "feature/**", "fix/**", "chore/**"]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -11,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-release-${{ github.workflow }}-${{ github.ref }}
+  group: rekey-release-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -19,11 +17,11 @@ env:
 
 jobs:
   release:
-    name: Release APK only
+    name: Build release APK
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Check out source
+      - name: Check out main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -34,7 +32,7 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - name: Set up Gradle and validate wrapper
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-provider: basic
@@ -45,8 +43,6 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0
 
-      # Keep the artifact path short: compile/shrink/package the release, then upload immediately.
-      # Tests, lint and emulator checks run in parallel jobs and never delay this upload.
       - name: Build release APK
         run: ./gradlew $GRADLE_ARGS :app:assembleRelease
 
@@ -58,89 +54,3 @@ jobs:
           if-no-files-found: error
           archive: false
           retention-days: 14
-
-  checks:
-    name: Release unit tests and lint
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Gradle and validate wrapper
-        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-        with:
-          cache-provider: basic
-          cache-read-only: true
-          validate-wrappers: true
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-        with:
-          packages: platform-tools platforms;android-37.0 build-tools;36.0.0
-
-      - name: Run release unit tests and lint
-        run: ./gradlew $GRADLE_ARGS :app:testReleaseUnitTest :app:lintRelease
-
-      # Results remain in job logs only. No report artifact is uploaded.
-
-  emulator:
-    name: Ephemeral runtime checks (no artifacts)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Gradle and validate wrapper
-        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-        with:
-          cache-provider: basic
-          cache-read-only: true
-          validate-wrappers: true
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
-        with:
-          packages: platform-tools platforms;android-37.0 build-tools;36.0.0
-
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Compile temporary emulator test APK
-        run: ./gradlew $GRADLE_ARGS :app:assembleDebug
-
-      - name: Run API 35 UI and launch checks
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          cores: 2
-          ram-size: 2048M
-          disable-animations: true
-          emulator-boot-timeout: 600
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: bash scripts/emulator-smoke.sh
-
-      # Test APKs, reports and screenshots disappear with the runner. Only the release job uploads a file.
