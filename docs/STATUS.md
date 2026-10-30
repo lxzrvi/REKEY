@@ -10,13 +10,17 @@ Updated: 2026-10-30 (Asia/Kolkata)
 - No unit-test, lint or emulator job runs in the release workflow.
 - No APK, report, mapping or screenshot is generated in the shared workspace.
 
-## Latest verified release-only baseline
+## Latest verified release-only build
 
-- Commit: `51543a6b02594bf3d4bb88f319daccac89c9f3ae`
-- Run: https://github.com/lxzrvi/REKEY/actions/runs/41009461508
-- Result: success; Gradle reported `BUILD SUCCESSFUL` and uploaded `app-release-unsigned.apk`.
+- Commit: `3f9d696`
+- Run: https://github.com/lxzrvi/REKEY/actions/runs/41022611359
+- Result: success; single `Build release APK` job.
+- Gradle: `BUILD SUCCESSFUL in 56s`.
+- End-to-end GitHub job: about 89 seconds including checkout, JDK/Gradle/Android SDK setup and artifact upload.
+- Artifact: `app-release-unsigned.apk`, id `12961669963`, 23,845,762 bytes.
+- SHA-256: `a5fcad31cf4c1830e717dcc29f75e833f8ac8274c0e1fe2eb7bb034e675254de`.
 
-The 0.3.0 increment (Haze 2, release-only CI and UI polish) is verified by the latest `main` workflow. Check the live badge/Actions page for the current head result:
+Check the live badge/Actions page for the current head result:
 
 https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml?query=branch%3Amain
 
