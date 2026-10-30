@@ -44,7 +44,7 @@ The emulator disables system animations for deterministic UI testing. This tests
 
 ## Limits and safety
 
-- No remote build has run until this scaffold is pushed.
+- The verified code baseline passed the complete remote workflow; exact run evidence and remaining limits are recorded in STATUS.md.
 - A successful build is not a guarantee against every runtime bug.
 - The release APK is unsigned and must not be described as store-ready.
 - CI has read-only repository permissions and does not need signing secrets.

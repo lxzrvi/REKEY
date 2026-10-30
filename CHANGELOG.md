@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — Foundation (remote verification pending)
+## 0.1.0 — Foundation (build and emulator verified)
 
 ### Added
 
@@ -20,4 +20,4 @@
 - Product brief, actual app features, navigation and data layer.
 - Licensed Holiday font acquisition/integration and final identity approval.
 - Production signing and store publication.
-- First remote CI run and real-device runtime/performance verification.
+- Physical-device runtime and animation/performance verification beyond the passing API 35 emulator checks.

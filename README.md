@@ -1,5 +1,7 @@
 # REKEY
 
+[![Android CI](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml/badge.svg?branch=main)](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml?query=branch%3Amain)
+
 An Android app built with Kotlin and Jetpack Compose.
 
 **Current stage: foundation only.** The product brief has not been provided yet. The current screen demonstrates the design system and native motion; it does not pretend to implement the app's future features.
@@ -41,7 +43,7 @@ With an emulator/device connected:
 
 The workflow is in `.github/workflows/android-ci.yml`. It runs on relevant branch pushes, pull requests to `main`, and manual dispatch. It uploads the debug APK, build reports, R8 mapping and emulator evidence as workflow artifacts. An APK artifact is not proof that tests passed; check the complete workflow result.
 
-**Remote verification status:** pending the first push. No GitHub build or emulator success is claimed yet. See [docs/STATUS.md](docs/STATUS.md) for the current evidence and outstanding work.
+**Remote verification:** the foundation passed the complete build and emulator workflow at commit `71bd8be`: [run 40991187588](https://github.com/lxzrvi/REKEY/actions/runs/40991187588). Results: 4/4 JVM tests, 4/4 emulator UI tests, zero lint errors, successful release shrinking and an explicit launch with an empty crash buffer. See [docs/STATUS.md](docs/STATUS.md) for evidence, fixes and limitations; the badge above tracks the latest `main` run.
 
 ## Structure
 
