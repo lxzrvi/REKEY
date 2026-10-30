@@ -28,6 +28,8 @@
 
 AGP supplies Kotlin; do not also apply `org.jetbrains.kotlin.android`. The Compose Compiler plugin matches the bundled Kotlin version. Google's SDK package is `platforms;android-37.0`, with `compileSdkMinor = 0`.
 
+AGP 9 creates JVM unit-test tasks only for the tested build type by default. This project explicitly sets `android.onlyEnableUnitTestForTheTestedBuildType=false`, retaining both release JVM tests and the debug emulator checks without skipping either. See the [official AGP 9 behavior-change documentation](https://developer.android.com/build/releases/agp-9-0-0-release-notes#android-gradle-plugin-behavior-changes).
+
 The Gradle wrapper and distribution have published checksums. CI validates the wrapper. GitHub Actions are pinned to commit SHAs.
 
 ## Release job

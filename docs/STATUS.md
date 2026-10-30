@@ -48,6 +48,8 @@ The three remaining lint notices report newer Gradle, AGP and Kotlin versions. T
    - Consolidated adaptive/monochrome icon resources for the minimum SDK.
    - Removed deprecated AGP 9 lint-report toggles.
 3. **Run 40991187588**, commit `71bd8be674a45576295679d7b55fb05552605e31`: complete build and emulator workflow passed.
+4. **Run 41008990061**, commit `255bd2efff869308e4272444524d487b4b3dab3a`: the first release-only run stopped during task selection because AGP 9 does not create `testReleaseUnitTest` by default. No artifact was uploaded.
+   - Explicitly set `android.onlyEnableUnitTestForTheTestedBuildType=false` so release JVM tests remain enabled alongside debug emulator checks. The fix requires a fresh successful workflow before being considered verified.
 
 No tests were disabled, no lint baseline was introduced, and no failing check was marked successful manually.
 

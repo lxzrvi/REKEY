@@ -5,6 +5,7 @@
 - Changed CI to build and upload only the unsigned release APK from GitHub Actions.
 - Removed debug APK, report, mapping and emulator artifact uploads.
 - Kept release unit tests, release lint and ephemeral emulator checks in GitHub job logs.
+- Explicitly enabled release JVM test tasks under AGP 9 while retaining debug emulator checks.
 - Removed generated deliverables from the shared workspace; source files remain.
 
 ## 0.1.0 — Foundation (build and emulator verified)
