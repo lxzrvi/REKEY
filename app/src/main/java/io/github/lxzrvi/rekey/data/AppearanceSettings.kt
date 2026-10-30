@@ -1,25 +1,21 @@
 package io.github.lxzrvi.rekey.data
 
-import io.github.lxzrvi.rekey.design.GlassContract
+/** Seven premium accents; CUSTOM is the eighth, colourful swatch that opens the wheel. */
+enum class AccentPalette { PLATINUM, AMETHYST, JADE, AURUM, ROSE, SAPPHIRE, COPPER, CUSTOM }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
-enum class AccentPalette { ICE, VIOLET, MINT, AMBER, CUSTOM }
 
-/** Appearance-only preferences; no product behavior is inferred from the demo cards. */
+/**
+ * Appearance-only preferences. Blur is permanently on at a fixed radius and the
+ * corner radius is fixed, so neither is user-adjustable any more.
+ */
 data class AppearanceSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val accent: AccentPalette = AccentPalette.ICE,
+    val accent: AccentPalette = AccentPalette.PLATINUM,
     val customColor: Int? = null,
-    val blurEnabled: Boolean = true,
-    val blurRadius: Float = GlassContract.DEFAULT_BLUR_DP,
-    val cornerRadius: Float = 24f,
     val textScale: Float = 1f,
     val animationsEnabled: Boolean = true,
     val highContrast: Boolean = false,
 ) {
-    fun normalized(): AppearanceSettings = copy(
-        blurRadius = blurRadius.coerceIn(GlassContract.MIN_BLUR_DP, GlassContract.MAX_BLUR_DP),
-        cornerRadius = cornerRadius.coerceIn(12f, 36f),
-        textScale = textScale.coerceIn(0.9f, 1.2f),
-    )
+    fun normalized(): AppearanceSettings = copy(textScale = textScale.coerceIn(0.9f, 1.2f))
 }

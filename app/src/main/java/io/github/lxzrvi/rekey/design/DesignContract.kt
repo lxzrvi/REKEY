@@ -23,10 +23,10 @@ object MotionContract {
     const val CARD_SETTLE_MILLIS = 420
 }
 
+/** Blur is always on and fixed by owner request: 15 dp, corners 15 dp. */
 object GlassContract {
     const val MIN_SDK = 31
-    const val DEFAULT_BLUR_DP = 28f
-    const val MIN_BLUR_DP = 8f
-    const val MAX_BLUR_DP = 40f
+    const val BLUR_DP = 15f
+    const val CORNER_DP = 15f
     const val NOISE_FACTOR = 0f
 }

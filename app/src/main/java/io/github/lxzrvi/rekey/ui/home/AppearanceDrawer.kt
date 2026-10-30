@@ -2,13 +2,14 @@ package io.github.lxzrvi.rekey.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -38,9 +40,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -50,10 +50,15 @@ import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AccentPalette
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.ThemeMode
-import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.ui.theme.color
 import kotlin.math.atan2
 import kotlin.math.hypot
+
+private val Rainbow = listOf(
+    Color(0xFFFF5F6D), Color(0xFFFFC371), Color(0xFFF9F871),
+    Color(0xFF4FD1A5), Color(0xFF4FA8FF), Color(0xFF9B6BFF),
+    Color(0xFFFF6BD6), Color(0xFFFF5F6D),
+)
 
 @Composable
 fun AppearanceDrawer(
@@ -66,7 +71,7 @@ fun AppearanceDrawer(
         modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, top = 64.dp, bottom = 28.dp)
+            .padding(start = 20.dp, end = 20.dp, top = 78.dp, bottom = 28.dp)
             .testTag("appearance_drawer"),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -77,7 +82,6 @@ fun AppearanceDrawer(
         )
 
         SectionLabel(stringResource(R.string.theme_title))
-        // Full-width segmented options with gaps between them.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeMode.entries.forEach { mode ->
                 SegmentButton(
@@ -96,26 +100,39 @@ fun AppearanceDrawer(
         }
 
         SectionLabel(stringResource(R.string.accent_title))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            AccentPalette.entries.forEach { palette ->
-                val label = stringResource(
-                    when (palette) {
-                        AccentPalette.ICE -> R.string.accent_ice
-                        AccentPalette.VIOLET -> R.string.accent_violet
-                        AccentPalette.MINT -> R.string.accent_mint
-                        AccentPalette.AMBER -> R.string.accent_amber
-                        AccentPalette.CUSTOM -> R.string.accent_custom
-                    },
-                )
-                Surface(
-                    onClick = { onChange(settings.copy(accent = palette)) },
-                    shape = CircleShape,
-                    color = palette.color(darkTheme, settings.customColor),
-                    border = BorderStroke(if (settings.accent == palette) 2.dp else 1.dp, MaterialTheme.colorScheme.onBackground),
-                    modifier = Modifier.size(if (settings.accent == palette) 36.dp else 30.dp).semantics { contentDescription = label },
-                ) {}
+        // Seven premium accents, then an eighth colourful swatch that opens the wheel.
+        val presets = AccentPalette.entries.filter { it != AccentPalette.CUSTOM }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            presets.take(4).forEach { palette ->
+                AccentDot(palette, settings, darkTheme, Modifier.weight(1f)) { onChange(settings.copy(accent = palette)) }
             }
         }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            presets.drop(4).forEach { palette ->
+                AccentDot(palette, settings, darkTheme, Modifier.weight(1f)) { onChange(settings.copy(accent = palette)) }
+            }
+            CustomDot(
+                selected = settings.accent == AccentPalette.CUSTOM,
+                modifier = Modifier.weight(1f),
+                onClick = { onChange(settings.copy(accent = AccentPalette.CUSTOM)) },
+            )
+        }
+        Text(
+            text = stringResource(
+                when (settings.accent) {
+                    AccentPalette.PLATINUM -> R.string.accent_platinum
+                    AccentPalette.AMETHYST -> R.string.accent_amethyst
+                    AccentPalette.JADE -> R.string.accent_jade
+                    AccentPalette.AURUM -> R.string.accent_aurum
+                    AccentPalette.ROSE -> R.string.accent_rose
+                    AccentPalette.SAPPHIRE -> R.string.accent_sapphire
+                    AccentPalette.COPPER -> R.string.accent_copper
+                    AccentPalette.CUSTOM -> R.string.accent_custom
+                },
+            ),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (settings.accent == AccentPalette.CUSTOM) {
             CustomColorPicker(
                 current = settings.customColor,
@@ -123,28 +140,7 @@ fun AppearanceDrawer(
             )
         }
 
-        SectionLabel(stringResource(R.string.glass_blur))
-        ToggleRow(stringResource(R.string.glass_blur), stringResource(R.string.glass_blur_description), settings.blurEnabled) { onChange(settings.copy(blurEnabled = it)) }
-        ThinSliderRow(
-            label = stringResource(R.string.blur_strength),
-            value = settings.blurRadius,
-            valueRange = GlassContract.MIN_BLUR_DP..GlassContract.MAX_BLUR_DP,
-            defaultValue = GlassContract.DEFAULT_BLUR_DP,
-            valueText = "${settings.blurRadius.toInt()} dp",
-            enabled = settings.blurEnabled,
-            onValueChange = { onChange(settings.copy(blurRadius = it)) },
-        )
-        ThinSliderRow(
-            label = stringResource(R.string.corner_radius),
-            value = settings.cornerRadius,
-            valueRange = 12f..36f,
-            defaultValue = 24f,
-            valueText = "${settings.cornerRadius.toInt()} dp",
-            onValueChange = { onChange(settings.copy(cornerRadius = it)) },
-        )
-
         SectionLabel(stringResource(R.string.typography_title))
-        // Text size uses buttons, not a slider.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(0.9f to "S", 1.0f to "M", 1.1f to "L", 1.2f to "XL").forEach { (scale, label) ->
                 SegmentButton(
@@ -161,12 +157,74 @@ fun AppearanceDrawer(
             color = MaterialTheme.colorScheme.primary,
         )
         Text(stringResource(R.string.typography_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(stringResource(R.string.long_press_reset), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
         SectionLabel(stringResource(R.string.motion_accessibility))
         ToggleRow(stringResource(R.string.animations), stringResource(R.string.animations_description), settings.animationsEnabled) { onChange(settings.copy(animationsEnabled = it)) }
         ToggleRow(stringResource(R.string.high_contrast), stringResource(R.string.high_contrast_description), settings.highContrast) { onChange(settings.copy(highContrast = it)) }
         Text(stringResource(R.string.settings_persist), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun AccentDot(
+    palette: AccentPalette,
+    settings: AppearanceSettings,
+    darkTheme: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val selected = settings.accent == palette
+    val label = stringResource(
+        when (palette) {
+            AccentPalette.PLATINUM -> R.string.accent_platinum
+            AccentPalette.AMETHYST -> R.string.accent_amethyst
+            AccentPalette.JADE -> R.string.accent_jade
+            AccentPalette.AURUM -> R.string.accent_aurum
+            AccentPalette.ROSE -> R.string.accent_rose
+            AccentPalette.SAPPHIRE -> R.string.accent_sapphire
+            AccentPalette.COPPER -> R.string.accent_copper
+            AccentPalette.CUSTOM -> R.string.accent_custom
+        },
+    )
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = palette.color(darkTheme, settings.customColor),
+            border = BorderStroke(if (selected) 2.5.dp else 1.dp, if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+            modifier = Modifier.size(if (selected) 40.dp else 34.dp).semantics { contentDescription = label },
+        ) {}
+    }
+}
+
+@Composable
+private fun CustomDot(selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val label = stringResource(R.string.accent_custom)
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = Color.Transparent,
+            border = BorderStroke(if (selected) 2.5.dp else 1.dp, if (selected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+            modifier = Modifier
+                .size(if (selected) 40.dp else 34.dp)
+                .semantics { contentDescription = label },
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(Brush.sweepGradient(Rainbow)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .size(11.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.92f)),
+                )
+            }
+        }
     }
 }
 
@@ -177,10 +235,9 @@ private fun SegmentButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(14.dp)
     Surface(
         onClick = onClick,
-        shape = shape,
+        shape = RoundedCornerShape(14.dp),
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
         border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
         modifier = modifier.height(44.dp),
@@ -234,7 +291,7 @@ private fun CustomColorPicker(current: Int?, onColor: (Int) -> Unit) {
                 },
         ) {
             val radius = minOf(size.width, size.height) / 2f
-            drawCircle(brush = Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+            drawCircle(brush = Brush.sweepGradient(Rainbow))
             drawCircle(brush = Brush.radialGradient(listOf(Color.White, Color.Transparent), radius = radius))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -257,79 +314,6 @@ private fun CustomColorPicker(current: Int?, onColor: (Int) -> Unit) {
             }) { Text(stringResource(R.string.apply)) }
         }
         if (error) Text(stringResource(R.string.invalid_hex), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    }
-}
-
-@Composable
-private fun ThinSliderRow(
-    label: String,
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    defaultValue: Float,
-    valueText: String,
-    enabled: Boolean = true,
-    onValueChange: (Float) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
-            Text(valueText, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        }
-        ThinSlider(
-            value = value,
-            valueRange = valueRange,
-            enabled = enabled,
-            label = label,
-            onValueChange = onValueChange,
-            onReset = { onValueChange(defaultValue) },
-        )
-    }
-}
-
-/** Thin track, no thumb. Drag/tap to adjust; long press to reset. */
-@Composable
-private fun ThinSlider(
-    value: Float,
-    valueRange: ClosedFloatingPointRange<Float>,
-    enabled: Boolean,
-    label: String,
-    onValueChange: (Float) -> Unit,
-    onReset: () -> Unit,
-) {
-    val trackColor = MaterialTheme.colorScheme.outline.copy(alpha = if (enabled) 0.45f else 0.2f)
-    val activeColor = MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 1f else 0.35f)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(28.dp)
-            .semantics {
-                contentDescription = label
-                progressBarRangeInfo = ProgressBarRangeInfo(value, valueRange)
-            }
-            .pointerInput(enabled, valueRange) {
-                if (!enabled) return@pointerInput
-                fun update(x: Float) {
-                    val fraction = (x / size.width).coerceIn(0f, 1f)
-                    onValueChange(valueRange.start + fraction * (valueRange.endInclusive - valueRange.start))
-                }
-                detectTapGestures(onTap = { update(it.x) }, onLongPress = { onReset() })
-            }
-            .pointerInput(enabled, valueRange) {
-                if (!enabled) return@pointerInput
-                detectHorizontalDragGestures { change, _ ->
-                    val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                    onValueChange(valueRange.start + fraction * (valueRange.endInclusive - valueRange.start))
-                    change.consume()
-                }
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Canvas(Modifier.fillMaxWidth().height(2.dp)) {
-            val y = size.height / 2f
-            drawLine(trackColor, Offset(0f, y), Offset(size.width, y), strokeWidth = size.height)
-            val fraction = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start)).coerceIn(0f, 1f)
-            drawLine(activeColor, Offset(0f, y), Offset(size.width * fraction, y), strokeWidth = size.height)
-        }
     }
 }
 

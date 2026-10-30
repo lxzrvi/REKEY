@@ -11,11 +11,8 @@ class RekeyPreferences(context: Context) {
         val defaults = AppearanceSettings()
         return AppearanceSettings(
             themeMode = runCatching { ThemeMode.valueOf(prefs.getString("theme", null) ?: defaults.themeMode.name) }.getOrDefault(defaults.themeMode),
-            accent = runCatching { AccentPalette.valueOf(prefs.getString("accent", null) ?: defaults.accent.name) }.getOrDefault(defaults.accent),
+            accent = runCatching { AccentPalette.valueOf(prefs.getString("accent_v2", null) ?: defaults.accent.name) }.getOrDefault(defaults.accent),
             customColor = if (prefs.contains("custom_color")) prefs.getInt("custom_color", 0) else null,
-            blurEnabled = prefs.getBoolean("blur", defaults.blurEnabled),
-            blurRadius = prefs.getFloat("blur_radius", defaults.blurRadius),
-            cornerRadius = prefs.getFloat("corners", defaults.cornerRadius),
             textScale = prefs.getFloat("text_scale", defaults.textScale),
             animationsEnabled = prefs.getBoolean("animations", defaults.animationsEnabled),
             highContrast = prefs.getBoolean("contrast", defaults.highContrast),
@@ -26,19 +23,18 @@ class RekeyPreferences(context: Context) {
         val v = value.normalized()
         prefs.edit {
             putString("theme", v.themeMode.name)
-            putString("accent", v.accent.name)
+            putString("accent_v2", v.accent.name)
             if (v.customColor == null) remove("custom_color") else putInt("custom_color", v.customColor)
-            putBoolean("blur", v.blurEnabled)
-            putFloat("blur_radius", v.blurRadius)
-            putFloat("corners", v.cornerRadius)
             putFloat("text_scale", v.textScale)
             putBoolean("animations", v.animationsEnabled)
             putBoolean("contrast", v.highContrast)
+            // Retired controls: blur toggle, blur strength and corner radius.
+            remove("blur"); remove("blur_radius"); remove("corners"); remove("accent")
         }
     }
 
     fun loadCardCount(): Int = prefs.getInt("card_count", 4).coerceIn(0, 10_000)
     fun saveCardCount(count: Int) = prefs.edit { putInt("card_count", count.coerceIn(0, 10_000)) }
-    fun loadSelectedCard(): Int = prefs.getInt("selected_card", 1).coerceAtLeast(0)
+    fun loadSelectedCard(): Int = prefs.getInt("selected_card", 0).coerceAtLeast(0)
     fun saveSelectedCard(index: Int) = prefs.edit { putInt("selected_card", index.coerceAtLeast(0)) }
 }

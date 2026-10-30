@@ -10,11 +10,11 @@ The current screen demonstrates branding, appearance controls and demo cards. Pr
 
 ## ADR 003: Typography and brand colors
 
-Allura is bundled only for the REKEY wordmark/icon. Poppins is bundled in four weights for UI text. Brand typography is separate from UI typography. OEM dynamic color is disabled to preserve the monochrome brand carrier; accent color is user-selectable, including a custom color wheel and hex input.
+Allura is bundled only for the REKEY wordmark/icon. Poppins is bundled in four weights for UI text. Brand typography is separate from UI typography. OEM dynamic color is disabled to preserve the monochrome brand carrier; accent color is user-selectable from seven premium tones plus a custom color wheel and hex input. The corner radius is fixed at 15 dp (`GlassContract.CORNER_DP`).
 
 ## ADR 004: Pure live blur with Haze 2
 
-`ui/blur/LiveBlur.kt` wraps Haze 2.0.1 + haze-blur 2.0.1. Blur styles set `noiseFactor(0f)`, `backgroundColor(Color.Transparent)` and `colorEffects(emptyList())`. Top/bottom edges use progressive vertical gradients; the appearance drawer uses a full-screen blur that fades with the drawer. The header itself is not boxed or blurred.
+`ui/blur/LiveBlur.kt` wraps Haze 2.0.1 + haze-blur 2.0.1. Blur styles set `noiseFactor(0f)`, `backgroundColor(Color.Transparent)` and `colorEffects(emptyList())`. Blur is always on at a fixed 15 dp (`GlassContract.BLUR_DP`); there is no user toggle or strength control. Top/bottom edges use progressive vertical gradients; the appearance drawer uses a full-screen blur that fades with the drawer. The header itself is not boxed or blurred.
 
 ## ADR 005: Local state only
 

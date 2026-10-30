@@ -1,7 +1,7 @@
 package io.github.lxzrvi.rekey.ui.home
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -65,6 +66,7 @@ import androidx.compose.ui.zIndex
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.RekeyPreferences
+import io.github.lxzrvi.rekey.design.GlassContract
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -89,21 +91,24 @@ private val Descs = listOf(
     "Every new box joins the end of the stack.",
 )
 
-/** Critically damped spring: no bounce, just smooth. */
+/** Swiping: no bounce, just smooth. */
 private val Smooth = spring<Float>(dampingRatio = 1f, stiffness = 120f)
+
+/** Re-slotting after add/remove: snappier, still no bounce. */
+private val SlotSpring = spring<Float>(dampingRatio = 1f, stiffness = 200f)
 
 @Stable
 private class CardItem(val id: Int, val animateIn: Boolean = false) {
     var removing by mutableStateOf(false)
+    var gone by mutableStateOf(false)
     var frozenIndex = 0
 }
 
 private fun two(i: Int) = i.toString().padStart(2, '0')
 
 /**
- * Redesigned main-page card layout: a continuous, draggable stack.
- * Position, scale, fade and depth dim are read inside graphicsLayer only,
- * so swiping does not recompose the tree.
+ * Draggable card stack. A new card rises from below with a light overshoot;
+ * a removed card flies upward, then the remaining cards close the gap.
  */
 @Composable
 fun CardStack(
@@ -123,7 +128,7 @@ fun CardStack(
     var target by remember { mutableIntStateOf(savedIndex) }
     val job = remember { arrayOfNulls<Job>(1) }
 
-    fun liveCount() = cards.count { !it.removing }
+    fun liveCount() = cards.count { !it.gone }
 
     fun settleTo(t: Int, v0: Float = 0f) {
         target = t
@@ -151,16 +156,19 @@ fun CardStack(
     }
 
     fun removeBox(item: CardItem) {
-        val live = cards.filter { !it.removing }
-        val r = live.indexOf(item)
-        if (r < 0) return
-        item.frozenIndex = r
+        if (item.removing || item.gone) return
         item.removing = true
-        var t = target
-        if (r < t) t--
-        settleTo(t.coerceIn(0, live.size - 1))
-        preferences.saveCardCount(live.size - 1)
         scope.launch {
+            delay(if (animated) 130L else 0L)
+            val live = cards.filter { !it.gone }
+            val r = live.indexOf(item)
+            if (r < 0) return@launch
+            item.frozenIndex = r
+            item.gone = true
+            var t = target
+            if (r < t) t--
+            settleTo(t.coerceIn(0, live.size - 1))
+            preferences.saveCardCount(live.size - 1)
             delay(if (animated) 450L else 0L)
             cards.remove(item)
         }
@@ -172,7 +180,9 @@ fun CardStack(
         BoxWithConstraints(Modifier.fillMaxWidth().height(300.dp).testTag("card_stack")) {
             val cardW = minOf(maxWidth * 0.86f, 420.dp)
             val cardH = minOf(cardW * 0.62f, maxHeight * 0.7f)
-            val wPx = with(LocalDensity.current) { cardW.toPx() }
+            val density = LocalDensity.current
+            val wPx = with(density) { cardW.toPx() }
+            val hPx = with(density) { cardH.toPx() }
             val stepPx = wPx * 0.5f
 
             val dragState = rememberDraggableState { delta ->
@@ -197,24 +207,24 @@ fun CardStack(
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                val live = cards.filter { !it.removing }
+                val live = cards.filter { !it.gone }
 
                 cards.forEach { item ->
                     key(item.id) {
-                        val idx = if (item.removing) item.frozenIndex else live.indexOf(item)
+                        val idx = if (item.gone) item.frozenIndex else live.indexOf(item)
                         StackCard(
                             slotIndex = idx,
                             pos = { pos },
                             wPx = wPx,
+                            hPx = hPx,
                             w = cardW,
                             h = cardH,
-                            radius = settings.cornerRadius.dp,
                             animateIn = item.animateIn,
                             removing = item.removing,
                             animated = animated,
-                            onClick = { if (idx != target) settleTo(idx) },
+                            onClick = { if (!item.removing && idx != target) settleTo(idx) },
                         ) {
-                            BoxFace(item) { removeBox(item) }
+                            BoxFace(item, animated) { removeBox(item) }
                         }
                     }
                 }
@@ -226,30 +236,27 @@ fun CardStack(
                         slotIndex = n,
                         pos = { pos },
                         wPx = wPx,
+                        hPx = hPx,
                         w = cardW,
                         h = cardH,
-                        radius = settings.cornerRadius.dp,
                         animateIn = false,
                         removing = false,
                         animated = animated,
                         onClick = { if (target != n) settleTo(n) else addBox() },
                     ) {
-                        PlusGlyph(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .align(Alignment.Center)
-                                .testTag("add_card")
-                                .semantics { contentDescription = addDescription },
+                        PlusButton(
+                            modifier = Modifier.align(Alignment.Center).testTag("add_card"),
+                            description = addDescription,
+                            animated = animated,
                         )
                     }
                 }
             }
         }
 
-        val n = cards.count { !it.removing }
+        val n = cards.count { !it.gone }
         val cur by remember {
-            derivedStateOf { pos.roundToInt().coerceIn(0, cards.count { !it.removing }) }
+            derivedStateOf { pos.roundToInt().coerceIn(0, cards.count { !it.gone }) }
         }
         val muted = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
         val trackColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.18f)
@@ -272,7 +279,7 @@ fun CardStack(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val nn = cards.count { !it.removing }
+                            val nn = cards.count { !it.gone }
                             scaleX = if (nn > 0) (pos / nn).coerceIn(0f, 1f) else 1f
                             transformOrigin = TransformOrigin(0f, 0.5f)
                         }
@@ -290,34 +297,42 @@ private fun StackCard(
     slotIndex: Int,
     pos: () -> Float,
     wPx: Float,
+    hPx: Float,
     w: Dp,
     h: Dp,
-    radius: Dp,
     animateIn: Boolean,
     removing: Boolean,
     animated: Boolean,
     onClick: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val slot = animateFloatAsState(slotIndex.toFloat(), if (animated) Smooth else tween<Float>(0), label = "slot")
+    val slot = animateFloatAsState(
+        targetValue = slotIndex.toFloat(),
+        animationSpec = if (animated) SlotSpring else tween<Float>(0),
+        label = "slot",
+    )
+
+    // ADD: the new box rises from below with a slight spring overshoot.
     val appear = remember { Animatable(if (animateIn) 0f else 1f) }
     LaunchedEffect(Unit) {
-        if (animateIn) appear.animateTo(1f, tween(450, easing = FastOutSlowInEasing)) else appear.snapTo(1f)
+        if (animateIn) appear.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 200f)) else appear.snapTo(1f)
     }
+
+    // REMOVE: the card accelerates upward and fades out.
     val exit = animateFloatAsState(
-        targetValue = if (removing) 0f else 1f,
-        animationSpec = tween<Float>(if (animated) 400 else 0),
+        targetValue = if (removing) 1f else 0f,
+        animationSpec = tween(if (animated) 430 else 0, easing = CubicBezierEasing(0.5f, 0f, 1f, 0.6f)),
         label = "exit",
     )
 
-    val z by remember {
-        derivedStateOf { 1000 - (abs(slot.value - pos()) * 20f).roundToInt() }
-    }
+    val entering by remember { derivedStateOf { appear.value < 0.98f } }
+    val z by remember { derivedStateOf { 1000 - (abs(slot.value - pos()) * 20f).roundToInt() } }
+    val zi = if (removing) 5000f else z.toFloat() + if (entering) 2f else 0f
 
     Box(
         Modifier
             .size(w, h)
-            .zIndex(z.toFloat())
+            .zIndex(zi)
             .graphicsLayer {
                 val d = slot.value - pos()
                 val a = abs(d)
@@ -326,16 +341,20 @@ private fun StackCard(
                 val bump = if (a < 1f) sin1 * sin1 else 0f
                 translationX = wPx * (0.32f * tanh(0.75f * d) + 0.38f * s * bump)
 
+                val ap = appear.value
+                val ex = exit.value
+                translationY = (1f - ap) * hPx * 0.5f - ex * hPx * 1.3f
+
                 val t = ((a - 2.4f) / 1.4f).coerceIn(0f, 1f)
                 val fade = 1f - t * t * (3f - 2f * t)
                 val sc = (0.7f + 0.3f * exp(-a * a * 0.35f)) *
-                    (0.9f + 0.1f * appear.value) *
-                    (0.88f + 0.12f * exit.value)
+                    (0.86f + 0.14f * ap) *
+                    (1f - 0.06f * ex)
                 scaleX = sc
                 scaleY = sc
-                alpha = fade * appear.value * exit.value
+                alpha = fade * (ap * 1.8f).coerceIn(0f, 1f) * (1f - ex * ex).coerceIn(0f, 1f)
             }
-            .clip(RoundedCornerShape(radius))
+            .clip(RoundedCornerShape(GlassContract.CORNER_DP.dp))
             .background(MaterialTheme.colorScheme.surface)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -344,7 +363,6 @@ private fun StackCard(
             ),
     ) {
         content()
-        // Depth dim for cards behind: plain black overlay, no tint.
         Box(
             Modifier
                 .matchParentSize()
@@ -358,7 +376,7 @@ private fun StackCard(
 }
 
 @Composable
-private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
+private fun BoxFace(item: CardItem, animated: Boolean, onRemove: () -> Unit) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val removeDescription = stringResource(R.string.remove_card_description, item.id)
     Column(
@@ -377,16 +395,24 @@ private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(top = 7.dp),
             )
+            val src = remember { MutableInteractionSource() }
+            val pressed by src.collectIsPressedAsState()
+            val xScale by animateFloatAsState(
+                targetValue = if (pressed) 0.84f else 1f,
+                animationSpec = if (animated) spring(dampingRatio = 0.6f, stiffness = 500f) else tween<Float>(0),
+                label = "xScale",
+            )
             Box(
                 Modifier
-                    .size(30.dp)
+                    .size(32.dp)
+                    .graphicsLayer { scaleX = xScale; scaleY = xScale }
                     .clip(CircleShape)
                     .background(onSurface)
-                    .clickable(onClick = onRemove)
+                    .clickable(interactionSource = src, indication = null, onClick = onRemove)
                     .semantics { contentDescription = removeDescription },
                 contentAlignment = Alignment.Center,
             ) {
-                CrossGlyph(color = MaterialTheme.colorScheme.surface, modifier = Modifier.size(13.dp))
+                CrossGlyph(color = MaterialTheme.colorScheme.surface, modifier = Modifier.size(14.dp))
             }
         }
         Column {
@@ -406,6 +432,26 @@ private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
                 textAlign = TextAlign.Start,
             )
         }
+    }
+}
+
+@Composable
+private fun PlusButton(modifier: Modifier, description: String, animated: Boolean) {
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.88f else 1f,
+        animationSpec = if (animated) spring(dampingRatio = 0.6f, stiffness = 500f) else tween<Float>(0),
+        label = "plusScale",
+    )
+    Box(
+        modifier
+            .size(48.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        PlusGlyph(color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(38.dp))
     }
 }
 

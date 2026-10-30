@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — Presets header, premium accents, fixed blur, animated add/remove
+
+- Startup keeps only the first REKEY wordmark; the second wordmark above the cards is removed.
+- The gap above the cards now carries a left-aligned **Presets** title.
+- Card add/remove animated: a new card rises from below with a light spring overshoot, a removed card accelerates upward, then the remaining cards close the gap. The X and plus buttons compress on press.
+- The Appearance title sits at the sidebar's left edge, level with the X.
+- Accent palette replaced with seven premium tones (Platinum, Amethyst, Jade, Aurum, Rose, Sapphire, Copper) plus an eighth rainbow swatch that opens the custom wheel and hex input.
+- Live blur is always on at a fixed 15 dp; the blur toggle and blur-strength slider are removed.
+- Corner radius fixed at 15 dp; the corner-radius slider is removed.
+
 ## 0.4.0 — Text-only startup, in-place menu morph, redesigned card stack
 
 - Startup now shows only the REKEY wordmark; the loading spinner is removed.
