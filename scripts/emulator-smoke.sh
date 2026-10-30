@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-report_dir="app/build/emulator"
-mkdir -p "$report_dir"
-
-collect_logs() {
+# Ephemeral GitHub-runner checks only. Do not create deliverable files or screenshots.
+print_failure_logs() {
     local original_status=$?
-    adb logcat -d -v threadtime > "$report_dir/logcat.txt" 2>&1 || true
-    adb logcat -d -b crash -v threadtime > "$report_dir/crash.txt" 2>&1 || true
-    adb exec-out screencap -p > "$report_dir/foundation.png" 2>/dev/null || true
+    if (( original_status != 0 )); then
+        printf '\n--- Recent emulator logcat (job logs only) ---\n' >&2
+        adb logcat -d -v threadtime | tail -n 300 >&2 || true
+    fi
     exit "$original_status"
 }
-trap collect_logs EXIT
+trap print_failure_logs EXIT
 
 ./gradlew --no-daemon --stacktrace --max-workers=2 :app:connectedDebugAndroidTest
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -W -n io.github.lxzrvi.rekey/.MainActivity
-adb shell pidof io.github.lxzrvi.rekey > "$report_dir/app-pid.txt"
-adb exec-out screencap -p > "$report_dir/foundation.png"
-adb logcat -d -b crash -v threadtime > "$report_dir/crash.txt"
-if grep -q 'FATAL EXCEPTION' "$report_dir/crash.txt"; then
+printf 'App process PID: '
+adb shell pidof io.github.lxzrvi.rekey
+crash_log="$(adb logcat -d -b crash -v threadtime)"
+if grep -q 'FATAL EXCEPTION' <<< "$crash_log"; then
+    printf '%s\n' "$crash_log" >&2
     echo 'Fatal Android runtime exception detected.' >&2
-    cat "$report_dir/crash.txt" >&2
     exit 1
 fi
-printf 'Connected UI tests and explicit launch smoke check passed.\n'
+printf 'Connected UI tests and explicit launch passed. No runtime artifacts uploaded.\n'

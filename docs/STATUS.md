@@ -51,15 +51,15 @@ The three remaining lint notices report newer Gradle, AGP and Kotlin versions. T
 
 No tests were disabled, no lint baseline was introduced, and no failing check was marked successful manually.
 
-## Artifacts
+## Current artifact policy
 
-The successful workflow retains artifacts for 14 days:
+The owner clarified that APK builds must run only on GitHub and only a release APK may be delivered. The workflow now runs release-variant unit tests and lint, and uploads exactly one file: `app-release-unsigned.apk`.
 
-- `rekey-debug-71bd8be674a45576295679d7b55fb05552605e31`
-- `rekey-build-reports-71bd8be674a45576295679d7b55fb05552605e31`
-- `rekey-emulator-71bd8be674a45576295679d7b55fb05552605e31`
+No debug APK, report archive, mapping, screenshot or other deliverable is uploaded. Emulator test builds and outputs are temporary on the GitHub runner; job results remain in Actions logs. Previously generated local deliverables and debug/report artifacts are removed under this correction. Historical test results above remain a record of what actually ran, not a promise that old artifacts remain available.
 
-Download them from the verified run page. The debug APK is installable for testing, not a production-signed release. The release build is unsigned.
+The latest main verification is available from the repository Actions page and README badge. The earlier final main baseline also passed: https://github.com/lxzrvi/REKEY/actions/runs/40992545441 (commit `4e814a573f6f612e3f673f527fdd2febf76d5ddc`).
+
+The release APK is unsigned until secure production signing is configured; it is not a Play Store-ready or normally installable signed release.
 
 ## Limits and next gates
 

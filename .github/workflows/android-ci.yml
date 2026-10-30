@@ -1,4 +1,4 @@
-name: Android CI
+name: Android Release CI
 
 on:
   push:
@@ -11,15 +11,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  group: android-release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   GRADLE_ARGS: --no-daemon --stacktrace --max-workers=2
 
 jobs:
-  build:
-    name: Build, unit tests and lint
+  release:
+    name: Release build, unit tests and lint
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -45,33 +45,23 @@ jobs:
         with:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0
 
-      - name: Build debug, test, lint and verify release shrinking
-        run: ./gradlew $GRADLE_ARGS :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease
+      - name: Build release, run release unit tests and lint
+        run: ./gradlew $GRADLE_ARGS :app:assembleRelease :app:testReleaseUnitTest :app:lintRelease
 
-      - name: Upload installable debug APK
-        if: success()
+      # The only downloadable workflow artifact is the release APK.
+      # No production keystore is configured, so AGP produces app-release-unsigned.apk.
+      - name: Upload release APK only
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: rekey-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: app-release-unsigned.apk
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
           if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload build reports
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: rekey-build-reports-${{ github.sha }}
-          path: |
-            app/build/reports/
-            app/build/test-results/
-            app/build/outputs/mapping/release/
-          if-no-files-found: warn
+          archive: false
           retention-days: 14
 
   emulator:
-    name: Emulator launch and UI smoke tests
-    needs: build
+    name: Ephemeral runtime checks (no artifacts)
+    needs: release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -104,10 +94,10 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Build debug APK
+      - name: Compile temporary emulator test APK
         run: ./gradlew $GRADLE_ARGS :app:assembleDebug
 
-      - name: Run API 35 emulator tests and launch smoke check
+      - name: Run API 35 UI and launch checks
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -121,14 +111,4 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: bash scripts/emulator-smoke.sh
 
-      - name: Upload emulator reports and screenshot
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: rekey-emulator-${{ github.sha }}
-          path: |
-            app/build/emulator/
-            app/build/reports/androidTests/
-            app/build/outputs/androidTest-results/
-          if-no-files-found: warn
-          retention-days: 14
+      # Test results stay in the Actions job logs. No test APK, reports or screenshots are uploaded.

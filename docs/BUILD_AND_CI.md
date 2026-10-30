@@ -1,5 +1,12 @@
 # Build and CI
 
+## Owner's build policy
+
+- APK builds run on **GitHub Actions only**. The Arena workspace holds source files, not APK deliverables.
+- The **only uploaded artifact is the release APK**. Do not upload debug APKs, test reports, mappings, screenshots or separate report files.
+- Runtime checks may compile temporary debug/test APKs on the GitHub runner. These are never uploaded and disappear with the runner.
+- No production keystore is configured. The downloadable file is explicitly `app-release-unsigned.apk`; it is not a signed or Play Store-ready release.
+
 ## Pinned toolchain
 
 | Component | Version |
@@ -19,41 +26,28 @@
 | CI JDK | Temurin 21 |
 | Java/Kotlin bytecode compatibility | 17 |
 
-AGP 9 supplies Kotlin: do not also apply `org.jetbrains.kotlin.android`. The Compose Compiler plugin matches the bundled Kotlin version. The selected Compose UI and Core artifacts require compile SDK 37.0 and at least AGP 9.1, as declared in their AAR metadata.
+AGP supplies Kotlin; do not also apply `org.jetbrains.kotlin.android`. The Compose Compiler plugin matches the bundled Kotlin version. Google's SDK package is `platforms;android-37.0`, with `compileSdkMinor = 0`.
 
-The Gradle wrapper JAR was checked against Gradle's published SHA-256. The distribution URL also pins the published distribution checksum. CI enables wrapper validation. Action dependencies are pinned to commit SHAs with release-version comments.
+The Gradle wrapper and distribution have published checksums. CI validates the wrapper. GitHub Actions are pinned to commit SHAs.
 
-## What the workflow proves
+## Release job
 
-`build` job:
+The workflow runs `:app:assembleRelease :app:testReleaseUnitTest :app:lintRelease`.
 
-1. Compile and package an installable debug APK.
-2. Run JVM design-contract tests.
-3. Run Android lint with errors failing the job.
-4. Compile an unsigned, minified release APK and run resource shrinking.
-5. Upload the APK, reports and release mapping.
+- Release compilation, R8 minification and resource shrinking must succeed.
+- Release-variant JVM tests must pass.
+- Release lint runs with errors failing the job.
+- Only `app/build/outputs/apk/release/app-release-unsigned.apk` is uploaded, directly as an APK rather than an additional ZIP archive.
+- Artifact retention is 14 days.
 
-`emulator` job, after the build passes:
+## Runtime job
 
-1. Boot an API 35 x86_64 Google APIs emulator.
-2. Run four Compose UI tests: launch, font-weight presence, motion interaction and activity recreation.
-3. Install and explicitly launch the APK, check its process and collect a screenshot.
-4. Check the crash buffer and preserve logcat evidence.
+After the release job passes, an API 35 x86_64 emulator runs four Compose tests and an explicit install/launch/process/crash-buffer check. A temporary debug APK is needed because the release APK is unsigned and cannot be installed for this check. It is not a deliverable.
 
-The emulator disables system animations for deterministic UI testing. This tests the state changes and zero-duration path, not subjective animation smoothness. Real-device animation/performance review remains separate. API 35 is a smoke-test target, not a claim of compatibility with every supported Android version.
+Results are visible in the GitHub job logs. No screenshots, log files, report artifacts or test APKs are uploaded. System animations are disabled for deterministic tests; this is not a physical-device performance guarantee.
 
-## Limits and safety
+## Source editing and safety
 
-- The verified code baseline passed the complete remote workflow; exact run evidence and remaining limits are recorded in STATUS.md.
-- A successful build is not a guarantee against every runtime bug.
-- The release APK is unsigned and must not be described as store-ready.
-- CI has read-only repository permissions and does not need signing secrets.
-- No Build Scan is published; `setup-gradle` uses its basic GitHub cache provider.
-- Debug APKs are test artifacts. Their signing key is not a production identity.
-- Re-run and diagnose failing checks; do not disable lint/tests to obtain a green badge.
+Open the source in an Android Studio release supporting AGP 9.4.1. Follow the GitHub-only build policy above; do not generate local APK deliverables in the shared workspace.
 
-## Local prerequisites
-
-Install a JDK compatible with Gradle 9.7.1 (JDK 21 recommended), Android SDK Platform 37.0 and Build Tools 36.0.0. Accept the Android SDK licenses through Android Studio or `sdkmanager`. Set `ANDROID_HOME` or create an uncommitted `local.properties` pointing to the SDK.
-
-Use `./gradlew` on macOS/Linux and `gradlew.bat` on Windows. Do not use a globally installed Gradle in place of the wrapper.
+CI has read-only repository permissions and needs no signing secrets. Production signing must be configured securely later; never commit a keystore or password. Do not disable tests or lint to obtain a green badge.

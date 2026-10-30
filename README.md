@@ -1,10 +1,18 @@
 # REKEY
 
-[![Android CI](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml/badge.svg?branch=main)](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml?query=branch%3Amain)
+[![Android Release CI](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml/badge.svg?branch=main)](https://github.com/lxzrvi/REKEY/actions/workflows/android-ci.yml?query=branch%3Amain)
 
 An Android app built with Kotlin and Jetpack Compose.
 
-**Current stage: foundation only.** The product brief has not been provided yet. The current screen demonstrates the design system and native motion; it does not pretend to implement the app's future features.
+**Current stage: foundation only.** The product brief has not been provided yet. The current screen demonstrates the design system and native motion; it does not implement assumed product features.
+
+## Build policy
+
+- **APK builds happen on GitHub Actions only.** The shared workspace contains source, not generated APKs or deliverable reports.
+- **The only uploaded artifact is the release APK:** `app-release-unsigned.apk`.
+- No debug APK, report archive, mapping file, screenshot or other deliverable is uploaded.
+- Emulator checks use temporary test builds on the GitHub runner; results remain in job logs and are not uploaded as files.
+- No production keystore is configured. The release APK is unsigned, not Play Store-ready, and cannot be installed as a normal signed release.
 
 ## Foundation
 
@@ -14,38 +22,18 @@ An Android app built with Kotlin and Jetpack Compose.
 - Offline Poppins Thin, Regular, Medium and Bold, with the SIL Open Font License.
 - Monochrome light/dark themes, adaptive black launcher icon and Android 12+ splash.
 - White wordmark on a dark surface. **Holiday by Letterhend Studio is selected but not yet licensed/bundled; the visible wordmark is a marked Poppins fallback.**
-- Native Compose animation, with system animator-duration scaling.
-- JVM contract tests and instrumented Compose interaction/recreation tests.
-- GitHub Actions: debug APK, unit tests, lint, unsigned release build and API 35 emulator smoke tests.
-
-## Open and build
-
-Use an Android Studio release that supports AGP 9.4.1, with JDK 21 recommended for the command line. Install Android SDK Platform 37.0 and Build Tools 36.0.0. `local.properties` is machine-specific and intentionally not committed.
-
-```bash
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
-./gradlew :app:assembleRelease
-```
-
-Windows: use `gradlew.bat` with the same tasks.
-
-Debug APK: `app/build/outputs/apk/debug/app-debug.apk`.
-
-The release build verifies shrinking but is **unsigned**, not a Play Store release. No signing key or credential belongs in Git.
-
-With an emulator/device connected:
-
-```bash
-./gradlew :app:connectedDebugAndroidTest
-```
+- Native Compose animation with system animator-duration scaling.
+- Release-variant JVM tests, lint and instrumented Compose interaction/recreation checks.
 
 ## GitHub Actions
 
-The workflow is in `.github/workflows/android-ci.yml`. It runs on relevant branch pushes, pull requests to `main`, and manual dispatch. It uploads the debug APK, build reports, R8 mapping and emulator evidence as workflow artifacts. An APK artifact is not proof that tests passed; check the complete workflow result.
+`.github/workflows/android-ci.yml` runs on relevant branch pushes, pull requests to `main`, and manual dispatch.
 
-**Remote verification:** the foundation passed the complete build and emulator workflow at commit `71bd8be`: [run 40991187588](https://github.com/lxzrvi/REKEY/actions/runs/40991187588). Results: 4/4 JVM tests, 4/4 emulator UI tests, zero lint errors, successful release shrinking and an explicit launch with an empty crash buffer. See [docs/STATUS.md](docs/STATUS.md) for evidence, fixes and limitations; the badge above tracks the latest `main` run.
+The release job runs `:app:assembleRelease :app:testReleaseUnitTest :app:lintRelease`, then uploads only the unsigned release APK. The runtime job checks launching and UI behavior on an API 35 emulator without uploading test files.
 
-## Structure
+The foundation previously passed its complete build and emulator workflow: [baseline run 40991187588](https://github.com/lxzrvi/REKEY/actions/runs/40991187588). The badge links to the latest `main` verification, including the release-only artifact policy. See [docs/STATUS.md](docs/STATUS.md) for historical evidence and limitations.
+
+## Source structure
 
 ```text
 app/src/main/java/io/github/lxzrvi/rekey/
@@ -58,9 +46,11 @@ app/src/main/java/io/github/lxzrvi/rekey/
 app/src/main/res/         Fonts, strings, themes and vector icons
 app/src/test/             JVM tests
 app/src/androidTest/      Compose UI tests
-.github/workflows/        Android CI
-scripts/                  Emulator smoke check
+.github/workflows/        GitHub-only release build
+scripts/                  Ephemeral emulator checks
 ```
+
+Use an Android Studio release supporting AGP 9.4.1 for source editing. Do not generate APK deliverables in the shared workspace; use the GitHub workflow.
 
 ## Docs
 
