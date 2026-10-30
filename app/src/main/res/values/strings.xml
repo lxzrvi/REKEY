@@ -5,12 +5,15 @@
     <string name="open_appearance">Open appearance settings</string>
     <string name="close_appearance">Close appearance settings</string>
     <string name="appearance">Appearance</string>
+    <string name="appearance_title">Appearance</string>
     <string name="appearance_subtitle">Make it feel like yours.</string>
     <string name="theme">Theme</string>
+    <string name="theme_title">Theme</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="accent">Accent</string>
+    <string name="accent_title">Accent</string>
     <string name="accent_ice">Ice</string>
     <string name="accent_violet">Violet</string>
     <string name="accent_mint">Mint</string>
@@ -26,6 +29,10 @@
     <string name="blur_strength">Blur strength</string>
     <string name="corner_radius">Corner radius</string>
     <string name="text_size">Text size</string>
+    <string name="typography_title">Typography</string>
+    <string name="typography_note">Allura is used only for REKEY. Everything else uses Poppins.</string>
+    <string name="motion_accessibility">Motion &amp; accessibility</string>
+    <string name="settings_persist">Settings are saved on this device.</string>
     <string name="animations">Animations</string>
     <string name="animations_description">Splash, drawer and card transitions.</string>
     <string name="high_contrast">High contrast</string>

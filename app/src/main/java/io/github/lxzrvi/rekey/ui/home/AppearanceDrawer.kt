@@ -2,6 +2,7 @@ package io.github.lxzrvi.rekey.ui.home
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -159,7 +160,7 @@ private fun CustomColorPicker(current: Int?, onColor: (Int) -> Unit) {
                         val center = Offset(size.width / 2f, size.height / 2f)
                         val dx = position.x - center.x
                         val dy = position.y - center.y
-                        val radius = size.minDimension / 2f
+                        val radius = minOf(size.width, size.height) / 2f
                         val saturation = (hypot(dx, dy) / radius).coerceIn(0f, 1f)
                         val hue = ((Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())) + 360.0) % 360.0).toFloat()
                         onColor(Color.hsv(hue, saturation, 1f).toArgb())
@@ -171,7 +172,7 @@ private fun CustomColorPicker(current: Int?, onColor: (Int) -> Unit) {
                         val center = Offset(size.width / 2f, size.height / 2f)
                         val dx = change.position.x - center.x
                         val dy = change.position.y - center.y
-                        val radius = size.minDimension / 2f
+                        val radius = minOf(size.width, size.height) / 2f
                         val saturation = (hypot(dx, dy) / radius).coerceIn(0f, 1f)
                         val hue = ((Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())) + 360.0) % 360.0).toFloat()
                         onColor(Color.hsv(hue, saturation, 1f).toArgb())
@@ -179,7 +180,7 @@ private fun CustomColorPicker(current: Int?, onColor: (Int) -> Unit) {
                     }
                 },
         ) {
-            val radius = size.minDimension / 2f
+            val radius = minOf(size.width, size.height) / 2f
             drawCircle(brush = Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
             drawCircle(brush = Brush.radialGradient(listOf(Color.White, Color.Transparent), radius = radius))
         }

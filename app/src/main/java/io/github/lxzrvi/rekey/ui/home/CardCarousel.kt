@@ -94,7 +94,7 @@ fun CardCarousel(
                             rotationY = -offset * 22f
                             cameraDistance = 16f
                             translationX = -offset * 30.dp.toPx()
-                            translationZ = -distance * 24.dp.toPx()
+                            shadowElevation = (1f - distance) * 6.dp.toPx()
                         },
                     contentAlignment = Alignment.Center,
                 ) {
