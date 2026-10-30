@@ -26,10 +26,12 @@ fun RekeyWordmark(
         color = color,
         style = BrandTypography.wordmark.copy(
             fontSize = fontSize,
-            lineHeight = fontSize * 1.18f,
+            lineHeight = fontSize * 1.36f,
+            letterSpacing = fontSize * BrandTypography.TRACKING_EM,
         ),
         textAlign = textAlign,
         maxLines = 1,
+        softWrap = false,
         modifier = modifier.clearAndSetSemantics { contentDescription = BrandContract.APP_NAME },
     )
 }

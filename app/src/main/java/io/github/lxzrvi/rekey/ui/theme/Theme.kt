@@ -9,40 +9,38 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import io.github.lxzrvi.rekey.data.AccentPalette
+import io.github.lxzrvi.rekey.data.AccentChoice
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.design.GlassContract
 
+/** iOS system blue. */
+val IosBlue = Color(0xFF007AFF)
+val IosBlueDark = Color(0xFF0A84FF)
+
 private val LightColors = lightColorScheme(
-    primary = Ink, onPrimary = BrandWhite,
-    primaryContainer = Ink, onPrimaryContainer = BrandWhite,
+    primary = IosBlue, onPrimary = BrandWhite,
+    primaryContainer = IosBlue, onPrimaryContainer = BrandWhite,
     secondary = MutedInk, onSecondary = BrandWhite,
-    background = Paper, onBackground = Ink,
+    background = BrandWhite, onBackground = Ink,
     surface = BrandWhite, onSurface = Ink,
     surfaceVariant = Paper, onSurfaceVariant = MutedInk,
     outline = Outline, outlineVariant = Outline,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = BrandWhite, onPrimary = BrandBlack,
-    primaryContainer = BrandWhite, onPrimaryContainer = BrandBlack,
+    primary = IosBlueDark, onPrimary = BrandWhite,
+    primaryContainer = IosBlueDark, onPrimaryContainer = BrandWhite,
     secondary = DarkMutedInk, onSecondary = BrandBlack,
-    background = DarkPaper, onBackground = BrandWhite,
+    background = BrandBlack, onBackground = BrandWhite,
     surface = DarkSurface, onSurface = BrandWhite,
     surfaceVariant = DarkSurface, onSurfaceVariant = DarkMutedInk,
     outline = DarkOutline, outlineVariant = DarkOutline,
 )
 
-/** Premium accent pairs: a deep tone for light mode, a lifted tone for dark mode. */
-fun AccentPalette.color(darkTheme: Boolean, customColor: Int? = null): Color = when (this) {
-    AccentPalette.PLATINUM -> if (darkTheme) Color(0xFFB8D4E8) else Color(0xFF3D5A73)
-    AccentPalette.AMETHYST -> if (darkTheme) Color(0xFFC7B5FF) else Color(0xFF6B4BB8)
-    AccentPalette.JADE -> if (darkTheme) Color(0xFF8FE6C4) else Color(0xFF1F7A5C)
-    AccentPalette.AURUM -> if (darkTheme) Color(0xFFF2CE7B) else Color(0xFF8A6410)
-    AccentPalette.ROSE -> if (darkTheme) Color(0xFFFFAFC6) else Color(0xFFA8365A)
-    AccentPalette.SAPPHIRE -> if (darkTheme) Color(0xFFA6C0FF) else Color(0xFF2547A8)
-    AccentPalette.COPPER -> if (darkTheme) Color(0xFFF0B48A) else Color(0xFF8A4B2A)
-    AccentPalette.CUSTOM -> customColor?.let { Color(it) } ?: if (darkTheme) Color(0xFFB8D4E8) else Color(0xFF3D5A73)
+/** One default accent, or the user's own hex colour. */
+fun AccentChoice.color(darkTheme: Boolean, customColor: Int? = null): Color = when (this) {
+    AccentChoice.DEFAULT -> if (darkTheme) IosBlueDark else IosBlue
+    AccentChoice.CUSTOM -> customColor?.let { Color(it) } ?: if (darkTheme) IosBlueDark else IosBlue
 }
 
 @Composable
@@ -58,8 +56,6 @@ fun RekeyTheme(
         secondary = accent,
         primaryContainer = accent.copy(alpha = if (darkTheme) 0.22f else 0.14f),
         onPrimaryContainer = if (darkTheme) BrandWhite else Ink,
-        outline = if (settings.highContrast) base.onBackground.copy(alpha = 0.75f) else base.outline,
-        outlineVariant = if (settings.highContrast) base.onBackground.copy(alpha = 0.5f) else base.outlineVariant,
     )
     val radius = GlassContract.CORNER_DP.dp
     MaterialTheme(

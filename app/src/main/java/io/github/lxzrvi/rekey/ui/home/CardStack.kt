@@ -8,6 +8,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -67,6 +68,7 @@ import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.design.GlassContract
+import io.github.lxzrvi.rekey.design.MotionContract
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -85,7 +87,7 @@ private val Names = listOf(
 
 private val Descs = listOf(
     "Swipe sideways to bring the next box forward.",
-    "Drag left or right and the stack follows.",
+    "Swipe a box up or down to remove it.",
     "Tap a box behind to pull it to the center.",
     "Use the circle to remove a box.",
     "Every new box joins the end of the stack.",
@@ -97,18 +99,33 @@ private val Smooth = spring<Float>(dampingRatio = 1f, stiffness = 120f)
 /** Re-slotting after add/remove: snappier, still no bounce. */
 private val SlotSpring = spring<Float>(dampingRatio = 1f, stiffness = 200f)
 
+/** Finger release below the dismiss threshold glides back to the slot. */
+private val ReturnSpring = spring<Float>(dampingRatio = 0.9f, stiffness = 260f)
+
+/** Removal glides away instead of snapping: gentle start, long tail. */
+private val ExitEasing = CubicBezierEasing(0.22f, 0.61f, 0.36f, 1f)
+
 @Stable
-private class CardItem(val id: Int, val animateIn: Boolean = false) {
+private class CardItem(val id: Int, val animateIn: Boolean = true) {
     var removing by mutableStateOf(false)
     var gone by mutableStateOf(false)
     var frozenIndex = 0
+
+    /** Live finger offset, also used as the starting point of the removal flight. */
+    var offsetY by mutableFloatStateOf(0f)
+
+    /** -1 flies up (the X, or an upward swipe), +1 flies down. */
+    var exitDirection = -1f
+    var returnJob: Job? = null
 }
 
 private fun two(i: Int) = i.toString().padStart(2, '0')
 
 /**
- * Draggable card stack. A new card rises from below with a light overshoot;
- * a removed card flies upward, then the remaining cards close the gap.
+ * Draggable card stack. A new card rises from below with a light overshoot; the X
+ * slides a card up and away; a vertical swipe does the same while tracking the
+ * finger. Only the two cards nearest the current position are drawn, so nothing
+ * peeks through the gap mid-swipe.
  */
 @Composable
 fun CardStack(
@@ -117,14 +134,13 @@ fun CardStack(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val animated = settings.animationsEnabled
     val initialCount = remember { preferences.loadCardCount().coerceIn(0, 10_000) }
     val cards = remember {
-        mutableStateListOf<CardItem>().apply { for (i in 1..initialCount) add(CardItem(i)) }
+        mutableStateListOf<CardItem>().apply { for (i in 1..initialCount) add(CardItem(i, animateIn = false)) }
     }
     var nextId by remember { mutableIntStateOf(initialCount + 1) }
     val savedIndex = remember { preferences.loadSelectedCard().coerceIn(0, initialCount) }
-    var pos by remember { mutableFloatStateOf(if (animated) savedIndex + 1.6f else savedIndex.toFloat()) }
+    var pos by remember { mutableFloatStateOf(savedIndex + 1.6f) }
     var target by remember { mutableIntStateOf(savedIndex) }
     val job = remember { arrayOfNulls<Job>(1) }
 
@@ -134,10 +150,6 @@ fun CardStack(
         target = t
         preferences.saveSelectedCard(t)
         job[0]?.cancel()
-        if (!animated) {
-            pos = t.toFloat()
-            return
-        }
         job[0] = scope.launch {
             animate(
                 initialValue = pos,
@@ -150,16 +162,18 @@ fun CardStack(
 
     fun addBox() {
         val n = liveCount()
-        cards.add(CardItem(nextId++, animateIn = animated))
+        cards.add(CardItem(nextId++))
         preferences.saveCardCount(liveCount())
         settleTo(n)
     }
 
     fun removeBox(item: CardItem) {
         if (item.removing || item.gone) return
+        item.returnJob?.cancel()
+        item.exitDirection = if (item.offsetY > 0f) 1f else -1f
         item.removing = true
         scope.launch {
-            delay(if (animated) 130L else 0L)
+            delay(MotionContract.CARD_GAP_CLOSE_MILLIS)
             val live = cards.filter { !it.gone }
             val r = live.indexOf(item)
             if (r < 0) return@launch
@@ -169,7 +183,7 @@ fun CardStack(
             if (r < t) t--
             settleTo(t.coerceIn(0, live.size - 1))
             preferences.saveCardCount(live.size - 1)
-            delay(if (animated) 450L else 0L)
+            delay(MotionContract.CARD_EXIT_MILLIS.toLong())
             cards.remove(item)
         }
     }
@@ -177,9 +191,9 @@ fun CardStack(
     LaunchedEffect(Unit) { settleTo(savedIndex) }
 
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(300.dp).testTag("card_stack")) {
+        BoxWithConstraints(Modifier.fillMaxWidth().testTag("card_stack")) {
             val cardW = minOf(maxWidth * 0.86f, 420.dp)
-            val cardH = minOf(cardW * 0.62f, maxHeight * 0.7f)
+            val cardH = minOf(cardW * 0.62f, 210.dp)
             val density = LocalDensity.current
             val wPx = with(density) { cardW.toPx() }
             val hPx = with(density) { cardH.toPx() }
@@ -192,9 +206,18 @@ fun CardStack(
                 pos += if (out) d * 0.35f else d
             }
 
+            // Vertical drag belongs to the centered box and follows the finger 1:1.
+            val verticalDrag = rememberDraggableState { delta ->
+                val item = cards.filter { !it.gone }.getOrNull(target) ?: return@rememberDraggableState
+                if (item.removing) return@rememberDraggableState
+                item.returnJob?.cancel()
+                item.offsetY += delta
+            }
+
             Box(
                 Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .height(cardH + 28.dp)
                     .draggable(
                         state = dragState,
                         orientation = Orientation.Horizontal,
@@ -203,6 +226,30 @@ fun CardStack(
                             val n = liveCount()
                             val v = (-velocity / stepPx).coerceIn(-10f, 10f)
                             settleTo((pos + v * 0.16f).roundToInt().coerceIn(0, n), v)
+                        },
+                    )
+                    .draggable(
+                        state = verticalDrag,
+                        orientation = Orientation.Vertical,
+                        onDragStopped = { velocity ->
+                            val item = cards.filter { !it.gone }.getOrNull(target)
+                            if (item != null && !item.removing) {
+                                val far = abs(item.offsetY) > hPx * 0.26f
+                                val fast = abs(velocity) > 900f && abs(item.offsetY) > hPx * 0.05f
+                                if (far || fast) {
+                                    if (velocity != 0f) item.exitDirection = if (velocity > 0f) 1f else -1f
+                                    removeBox(item)
+                                } else {
+                                    item.returnJob = scope.launch {
+                                        animate(
+                                            initialValue = item.offsetY,
+                                            targetValue = 0f,
+                                            initialVelocity = velocity,
+                                            animationSpec = ReturnSpring,
+                                        ) { value, _ -> item.offsetY = value }
+                                    }
+                                }
+                            }
                         },
                     ),
                 contentAlignment = Alignment.Center,
@@ -221,10 +268,11 @@ fun CardStack(
                             h = cardH,
                             animateIn = item.animateIn,
                             removing = item.removing,
-                            animated = animated,
+                            offsetY = { item.offsetY },
+                            exitDirection = item.exitDirection,
                             onClick = { if (!item.removing && idx != target) settleTo(idx) },
                         ) {
-                            BoxFace(item, animated) { removeBox(item) }
+                            BoxFace(item) { removeBox(item) }
                         }
                     }
                 }
@@ -241,13 +289,13 @@ fun CardStack(
                         h = cardH,
                         animateIn = false,
                         removing = false,
-                        animated = animated,
+                        offsetY = { 0f },
+                        exitDirection = -1f,
                         onClick = { if (target != n) settleTo(n) else addBox() },
                     ) {
                         PlusButton(
                             modifier = Modifier.align(Alignment.Center).testTag("add_card"),
                             description = addDescription,
-                            animated = animated,
                         )
                     }
                 }
@@ -262,7 +310,7 @@ fun CardStack(
         val trackColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.18f)
         val fillColor = MaterialTheme.colorScheme.onBackground
         Row(
-            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp).testTag("card_position"),
+            Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 10.dp).testTag("card_position"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -302,13 +350,14 @@ private fun StackCard(
     h: Dp,
     animateIn: Boolean,
     removing: Boolean,
-    animated: Boolean,
+    offsetY: () -> Float,
+    exitDirection: Float,
     onClick: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val slot = animateFloatAsState(
         targetValue = slotIndex.toFloat(),
-        animationSpec = if (animated) SlotSpring else tween<Float>(0),
+        animationSpec = SlotSpring,
         label = "slot",
     )
 
@@ -318,10 +367,10 @@ private fun StackCard(
         if (animateIn) appear.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 200f)) else appear.snapTo(1f)
     }
 
-    // REMOVE: the card accelerates upward and fades out.
+    // REMOVE: one continuous glide from wherever the finger left the card.
     val exit = animateFloatAsState(
         targetValue = if (removing) 1f else 0f,
-        animationSpec = tween(if (animated) 430 else 0, easing = CubicBezierEasing(0.5f, 0f, 1f, 0.6f)),
+        animationSpec = tween(MotionContract.CARD_EXIT_MILLIS, easing = ExitEasing),
         label = "exit",
     )
 
@@ -343,19 +392,32 @@ private fun StackCard(
 
                 val ap = appear.value
                 val ex = exit.value
-                translationY = (1f - ap) * hPx * 0.5f - ex * hPx * 1.3f
+                val drag = offsetY()
+                val flight = drag + exitDirection * hPx * 1.35f * ex
+                translationY = (1f - ap) * hPx * 0.5f + flight
+                rotationZ = (drag / hPx).coerceIn(-1f, 1f) * 3f * (1f - ex)
 
-                val t = ((a - 2.4f) / 1.4f).coerceIn(0f, 1f)
-                val fade = 1f - t * t * (3f - 2f * t)
+                // Only the current card and its immediate neighbours exist on screen.
+                // Anything further out is fully transparent, so the gap between two
+                // cards never reveals the box behind them.
+                val beyond = ((a - 1f) / 0.3f).coerceIn(0f, 1f)
+                val visibility = 1f - beyond * beyond * (3f - 2f * beyond)
+                val dragFade = 1f - 0.45f * (abs(drag) / (hPx * 0.9f)).coerceIn(0f, 1f)
                 val sc = (0.7f + 0.3f * exp(-a * a * 0.35f)) *
                     (0.86f + 0.14f * ap) *
-                    (1f - 0.06f * ex)
+                    (1f - 0.08f * ex)
                 scaleX = sc
                 scaleY = sc
-                alpha = fade * (ap * 1.8f).coerceIn(0f, 1f) * (1f - ex * ex).coerceIn(0f, 1f)
+                alpha = visibility * dragFade * (ap * 1.8f).coerceIn(0f, 1f) * (1f - ex * ex).coerceIn(0f, 1f)
             }
             .clip(RoundedCornerShape(GlassContract.CORNER_DP.dp))
             .background(MaterialTheme.colorScheme.surface)
+            // The page is white now, so a hairline keeps each box readable on the pattern.
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(GlassContract.CORNER_DP.dp),
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -376,7 +438,7 @@ private fun StackCard(
 }
 
 @Composable
-private fun BoxFace(item: CardItem, animated: Boolean, onRemove: () -> Unit) {
+private fun BoxFace(item: CardItem, onRemove: () -> Unit) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val removeDescription = stringResource(R.string.remove_card_description, item.id)
     Column(
@@ -399,7 +461,7 @@ private fun BoxFace(item: CardItem, animated: Boolean, onRemove: () -> Unit) {
             val pressed by src.collectIsPressedAsState()
             val xScale by animateFloatAsState(
                 targetValue = if (pressed) 0.84f else 1f,
-                animationSpec = if (animated) spring(dampingRatio = 0.6f, stiffness = 500f) else tween<Float>(0),
+                animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
                 label = "xScale",
             )
             Box(
@@ -436,12 +498,12 @@ private fun BoxFace(item: CardItem, animated: Boolean, onRemove: () -> Unit) {
 }
 
 @Composable
-private fun PlusButton(modifier: Modifier, description: String, animated: Boolean) {
+private fun PlusButton(modifier: Modifier, description: String) {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.88f else 1f,
-        animationSpec = if (animated) spring(dampingRatio = 0.6f, stiffness = 500f) else tween<Float>(0),
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
         label = "plusScale",
     )
     Box(

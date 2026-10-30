@@ -8,8 +8,10 @@ import androidx.compose.animation.core.updateTransition
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -22,10 +24,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.core.view.WindowCompat
-import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.data.ThemeMode
 import io.github.lxzrvi.rekey.design.MotionContract
@@ -49,7 +48,7 @@ fun RekeyApp() {
 
     LaunchedEffect(Unit) {
         if (!splashDone) {
-            delay(if (settings.animationsEnabled) MotionContract.SPLASH_HOLD_MILLIS else 350L)
+            delay(MotionContract.SPLASH_HOLD_MILLIS)
             splashDone = true
         }
     }
@@ -67,10 +66,7 @@ fun RekeyApp() {
     val transition = updateTransition(targetState = splashDone, label = "splash")
     val progress by transition.animateFloat(
         transitionSpec = {
-            tween(
-                durationMillis = if (settings.animationsEnabled) MotionContract.SPLASH_EXIT_MILLIS else 0,
-                easing = FastOutSlowInEasing,
-            )
+            tween(durationMillis = MotionContract.SPLASH_EXIT_MILLIS, easing = FastOutSlowInEasing)
         },
         label = "splashProgress",
     ) { if (it) 1f else 0f }
@@ -80,8 +76,9 @@ fun RekeyApp() {
         CompositionLocalProvider(
             LocalDensity provides Density(density.density, density.fontScale * settings.textScale),
         ) {
-            Surface(modifier = Modifier.fillMaxSize(), color = androidx.compose.material3.MaterialTheme.colorScheme.background) {
+            Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Box(Modifier.fillMaxSize()) {
+                    // Pure cross-fade. No scale, no zoom, no slide.
                     HomeScreen(
                         settings = settings,
                         onSettingsChange = {
@@ -90,23 +87,10 @@ fun RekeyApp() {
                         },
                         preferences = preferences,
                         darkTheme = darkTheme,
-                        modifier = Modifier.graphicsLayer {
-                            alpha = progress
-                            val scale = 0.965f + 0.035f * progress
-                            scaleX = scale
-                            scaleY = scale
-                            translationY = (1f - progress) * 28.dp.toPx()
-                        },
+                        modifier = Modifier.graphicsLayer { alpha = progress },
                     )
                     if (progress < 1f) {
-                        SplashOverlay(
-                            modifier = Modifier.graphicsLayer {
-                                alpha = 1f - progress
-                                val scale = 1f + 0.075f * progress
-                                scaleX = scale
-                                scaleY = scale
-                            },
-                        )
+                        SplashOverlay(modifier = Modifier.graphicsLayer { alpha = 1f - progress })
                     }
                 }
             }

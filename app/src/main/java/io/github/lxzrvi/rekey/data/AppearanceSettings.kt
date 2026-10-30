@@ -1,21 +1,23 @@
 package io.github.lxzrvi.rekey.data
 
-/** Seven premium accents; CUSTOM is the eighth, colourful swatch that opens the wheel. */
-enum class AccentPalette { PLATINUM, AMETHYST, JADE, AURUM, ROSE, SAPPHIRE, COPPER, CUSTOM }
+/**
+ * Only two accent choices are exposed: the iOS-style blue default, or a custom
+ * hex colour. The older premium palette is parked in [ParkedAccents].
+ */
+enum class AccentChoice { DEFAULT, CUSTOM }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /**
- * Appearance-only preferences. Blur is permanently on at a fixed radius and the
- * corner radius is fixed, so neither is user-adjustable any more.
+ * Appearance-only preferences. Blur is permanently on at a fixed radius, corners
+ * are fixed, animations are always on and high contrast is gone, so none of those
+ * are user-adjustable any more.
  */
 data class AppearanceSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val accent: AccentPalette = AccentPalette.PLATINUM,
+    val accent: AccentChoice = AccentChoice.DEFAULT,
     val customColor: Int? = null,
     val textScale: Float = 1f,
-    val animationsEnabled: Boolean = true,
-    val highContrast: Boolean = false,
 ) {
     fun normalized(): AppearanceSettings = copy(textScale = textScale.coerceIn(0.9f, 1.2f))
 }
