@@ -112,7 +112,13 @@ class RekeyImeService :
     private fun setUpEdgeToEdge() {
         val w = window?.window ?: return
         WindowCompat.setDecorFitsSystemWindows(w, false)
-        w.navigationBarColor = AndroidColor.TRANSPARENT
+        // From API 35 the platform ignores navigationBarColor and the bar is
+        // transparent anyway; the tray background already paints behind it
+        // because the padding sits inside the background modifier.
+        if (Build.VERSION.SDK_INT < 35) {
+            @Suppress("DEPRECATION")
+            w.navigationBarColor = AndroidColor.TRANSPARENT
+        }
         if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
         if (Build.VERSION.SDK_INT >= 28) {
             val attrs = w.attributes
@@ -229,7 +235,10 @@ class RekeyImeService :
             // that stay legible on it.
             LaunchedEffect(palette.canvas) {
                 val w = window?.window ?: return@LaunchedEffect
-                w.navigationBarColor = palette.canvas.toArgb()
+                if (Build.VERSION.SDK_INT < 35) {
+                    @Suppress("DEPRECATION")
+                    w.navigationBarColor = palette.canvas.toArgb()
+                }
                 if (Build.VERSION.SDK_INT >= 26) {
                     WindowCompat.getInsetsController(w, w.decorView)
                         .isAppearanceLightNavigationBars = palette.canvas.luminance() > 0.5f
