@@ -50,7 +50,7 @@ jobs:
           packages: platform-tools platforms;android-37.0 build-tools;36.0.0
 
       - name: Build release APK
-        run: ./gradlew $GRADLE_ARGS :app:assembleRelease
+        run: sh ./gradlew $GRADLE_ARGS :app:assembleRelease
 
       - name: Upload release APK only
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
