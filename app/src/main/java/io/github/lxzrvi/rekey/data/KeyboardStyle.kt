@@ -255,6 +255,18 @@ data class SuggestionStyle(
     val color: Color? = null,
     val textColor: Color? = null,
     val textSize: Float = 12f,
+    /** The grab handle above the strip: swipe down closes, double tap floats. */
+    val grabberEnabled: Boolean = true,
+    val grabberWidth: Float = 46f,
+    val grabberColor: Color? = null,
+    /** The expanding action pill on the right of the strip. */
+    val pillColor: Color? = null,
+    val pillIconColor: Color? = null,
+    val pillRadius: Float = 30f,
+    val pillPaste: Boolean = true,
+    val pillTranslate: Boolean = true,
+    val pillTheme: Boolean = true,
+    val pillLanguage: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("enabled", enabled)
@@ -264,6 +276,16 @@ data class SuggestionStyle(
         .putColor("color", color)
         .putColor("textColor", textColor)
         .put("textSize", textSize.toDouble())
+        .put("grabberEnabled", grabberEnabled)
+        .put("grabberWidth", grabberWidth.toDouble())
+        .putColor("grabberColor", grabberColor)
+        .putColor("pillColor", pillColor)
+        .putColor("pillIconColor", pillIconColor)
+        .put("pillRadius", pillRadius.toDouble())
+        .put("pillPaste", pillPaste)
+        .put("pillTranslate", pillTranslate)
+        .put("pillTheme", pillTheme)
+        .put("pillLanguage", pillLanguage)
 
     companion object {
         fun fromJson(o: JSONObject?): SuggestionStyle {
@@ -277,6 +299,16 @@ data class SuggestionStyle(
                 color = o.color("color"),
                 textColor = o.color("textColor"),
                 textSize = o.f("textSize", d.textSize),
+                grabberEnabled = o.optBoolean("grabberEnabled", d.grabberEnabled),
+                grabberWidth = o.f("grabberWidth", d.grabberWidth),
+                grabberColor = o.color("grabberColor"),
+                pillColor = o.color("pillColor"),
+                pillIconColor = o.color("pillIconColor"),
+                pillRadius = o.f("pillRadius", d.pillRadius),
+                pillPaste = o.optBoolean("pillPaste", d.pillPaste),
+                pillTranslate = o.optBoolean("pillTranslate", d.pillTranslate),
+                pillTheme = o.optBoolean("pillTheme", d.pillTheme),
+                pillLanguage = o.optBoolean("pillLanguage", d.pillLanguage),
             )
         }
     }

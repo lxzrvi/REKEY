@@ -210,12 +210,26 @@ fun PresetEditor(
                         fontSize = 14.sp,
                     )
                 }
-                Button(
-                    onClick = { keyboard?.hide(); styleOpen = true },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp).testTag("editor_edit"),
+                // Edit opens the wizard; Okay keeps just the name and details
+                // and returns to the main page. Both sit on the same row.
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(text = stringResource(R.string.editor_edit_style), fontSize = 14.sp)
+                    Button(
+                        onClick = { keyboard?.hide(); styleOpen = true },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(44.dp).testTag("editor_edit"),
+                    ) {
+                        Text(text = stringResource(R.string.editor_edit_style), fontSize = 14.sp)
+                    }
+                    Button(
+                        onClick = { keyboard?.hide(); onBack() },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(44.dp).testTag("editor_okay"),
+                    ) {
+                        Text(text = stringResource(R.string.editor_okay), fontSize = 14.sp)
+                    }
                 }
             }
             if (styleProgress > 0f) {

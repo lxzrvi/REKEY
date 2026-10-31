@@ -380,6 +380,25 @@ private fun SuggestionPage(
         ColorRow("Chip colour", spec.color, palette.key) { onChange(spec.copy(color = it)) }
         ColorRow("Text colour", spec.textColor, palette.text) { onChange(spec.copy(textColor = it)) }
     }
+    Panel("Grab handle") {
+        SwitchRow("Show the handle", spec.grabberEnabled) { onChange(spec.copy(grabberEnabled = it)) }
+        Text(
+            text = "Swipe it down to close the keyboard. Double tap to float it. While floating, drag it to move.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SliderRow("Width", spec.grabberWidth, 24f..90f, { onChange(spec.copy(grabberWidth = it)) }, " dp")
+        ColorRow("Handle colour", spec.grabberColor, palette.muted) { onChange(spec.copy(grabberColor = it)) }
+    }
+    Panel("Action pill") {
+        SliderRow("Corner radius", spec.pillRadius, 6f..30f, { onChange(spec.copy(pillRadius = it)) }, " dp")
+        ColorRow("Pill colour", spec.pillColor, palette.key) { onChange(spec.copy(pillColor = it)) }
+        ColorRow("Icon colour", spec.pillIconColor, palette.text) { onChange(spec.copy(pillIconColor = it)) }
+        SwitchRow("Paste", spec.pillPaste) { onChange(spec.copy(pillPaste = it)) }
+        SwitchRow("Translate", spec.pillTranslate) { onChange(spec.copy(pillTranslate = it)) }
+        SwitchRow("Change theme", spec.pillTheme) { onChange(spec.copy(pillTheme = it)) }
+        SwitchRow("Change language", spec.pillLanguage) { onChange(spec.copy(pillLanguage = it)) }
+    }
 }
 
 // ---- page 6 ------------------------------------------------------------------

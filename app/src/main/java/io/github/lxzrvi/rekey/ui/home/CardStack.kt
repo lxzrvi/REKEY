@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -107,6 +108,7 @@ class FlyingCard(
     val key: Int,
     val preset: KeyboardPreset,
     val layoutNumber: Int,
+    val shape: Shape,
     val left: Float,
     val top: Float,
     val width: Float,
@@ -126,6 +128,7 @@ class FlyingCard(
 class LiveDrag(
     val preset: KeyboardPreset,
     val layoutNumber: Int,
+    val shape: Shape,
     val left: Float,
     val top: Float,
     val width: Float,
@@ -153,6 +156,8 @@ private class CardState(val id: Int, var animateIn: Boolean = true) {
     var gone by mutableStateOf(false)
     var frozenIndex = 0
     var offsetY by mutableFloatStateOf(0f)
+    /** Unresisted finger travel. Resistance is a function of THIS, never of offsetY. */
+    var rawY = 0f
     var returnJob: Job? = null
     var bounds: Rect = Rect.Zero
     var layoutW = 0f
@@ -160,6 +165,19 @@ private class CardState(val id: Int, var animateIn: Boolean = true) {
 }
 
 private fun two(i: Int) = i.toString().padStart(2, '0')
+
+/**
+ * The card is a preview of the real keyboard, so it carries the same corner
+ * radii, scaled into the card's width. Changing a corner in the wizard changes
+ * the card on the main page too.
+ */
+private fun cardShapeFor(l: io.github.lxzrvi.rekey.data.LayoutStyle, scale: Float): Shape =
+    RoundedCornerShape(
+        topStart = (l.cornerTopLeft * scale).dp,
+        topEnd = (l.cornerTopRight * scale).dp,
+        bottomStart = (l.cornerBottomLeft * scale).dp,
+        bottomEnd = (l.cornerBottomRight * scale).dp,
+    )
 
 /**
  * Draggable preset stack. Behind-cards keep full brightness — depth comes only
@@ -192,6 +210,7 @@ fun CardStack(
     var target by remember { mutableIntStateOf(startIndex) }
     val job = remember { arrayOfNulls<Job>(1) }
     val cardHPxHolder = remember { floatArrayOf(0f) }
+    val cardScaleHolder = remember { floatArrayOf(1f) }
     val seeded = remember { mutableStateOf(false) }
     val defaultNotice = stringResource(R.string.notice_default_preset)
 
@@ -244,6 +263,7 @@ fun CardStack(
                     key = nextKey++,
                     preset = p,
                     layoutNumber = (presets.indexOfFirst { it.id == p.id } + 1).coerceAtLeast(1),
+                    shape = cardShapeFor(p.style.layout, cardScaleHolder[0]),
                     left = b.left,
                     top = b.top,
                     width = item.layoutW.takeIf { it > 0f } ?: b.width,
@@ -274,6 +294,7 @@ fun CardStack(
             val wPx = with(density) { cardW.toPx() }
             val hPx = with(density) { cardH.toPx() }
             cardHPxHolder[0] = hPx
+            cardScaleHolder[0] = cardW.value / KeyboardCanvas.WIDTH_VALUE
             val stepPx = wPx * 0.5f
 
             val dragState = rememberDraggableState { delta ->
@@ -297,6 +318,7 @@ fun CardStack(
                     LiveDrag(
                         preset = p,
                         layoutNumber = (presets.indexOfFirst { it.id == p.id } + 1).coerceAtLeast(1),
+                        shape = cardShapeFor(p.style.layout, cardW.value / KeyboardCanvas.WIDTH_VALUE),
                         left = item.bounds.left,
                         top = item.bounds.top - item.offsetY,
                         width = item.layoutW.takeIf { it > 0f } ?: item.bounds.width,
@@ -315,13 +337,13 @@ fun CardStack(
                 // Pulling down moves the whole card, it never deforms it. The
                 // resistance grows with distance so it feels progressively
                 // heavier, and it can never reach a dismissal threshold.
-                val next = item.offsetY + delta
-                item.offsetY = if (next > 0f) {
+                item.rawY += delta
+                item.offsetY = if (item.rawY > 0f) {
                     val limit = hPx * 0.42f
-                    val t = (next / limit).coerceAtLeast(0f)
+                    val t = (item.rawY / limit).coerceAtLeast(0f)
                     (limit * (1f - 1f / (1f + t * 1.6f))).coerceAtMost(limit)
                 } else {
-                    next
+                    item.rawY
                 }
             }
 
@@ -332,7 +354,25 @@ fun CardStack(
                     .draggable(
                         state = dragState,
                         orientation = Orientation.Horizontal,
-                        onDragStarted = { job[0]?.cancel() },
+                        onDragStarted = {
+                            job[0]?.cancel()
+                            // A horizontal swipe must not inherit a half-finished
+                            // vertical drag: the overlay is pinned to one x, so
+                            // leaving it up while the stack scrolls is the glitch.
+                            live().forEach { q ->
+                                val st = stateFor(q)
+                                if (st.dragging || st.offsetY != 0f || st.overlay) {
+                                    st.returnJob?.cancel()
+                                    st.rawY = 0f
+                                    st.offsetY = 0f
+                                    st.dragging = false
+                                    if (st.overlay) {
+                                        st.overlay = false
+                                        onLiveDrag(null)
+                                    }
+                                }
+                            }
+                        },
                         onDragStopped = { velocity ->
                             val n = live().size
                             val v = (-velocity / stepPx).coerceIn(-10f, 10f)
@@ -348,6 +388,7 @@ fun CardStack(
                                 val item = stateFor(p)
                                 if (!item.removing) {
                                     item.returnJob?.cancel()
+                                    item.rawY = item.offsetY
                                     item.dragging = true
                                     // Hand over at the current offset, where the
                                     // two copies are pixel-identical. Swapping at
@@ -370,8 +411,8 @@ fun CardStack(
                                     // otherwise a default card stays stuck in the air.
                                     if (dismiss && !KeyboardPalettes.isDefault(p)) {
                                         item.dragging = false
-                                        setLifted(p, item, false)
                                         removePreset(p, velocity)
+                                        setLifted(p, item, false)
                                     } else {
                                         if (dismiss) onNotice(defaultNotice)
                                         item.returnJob = scope.launch {
@@ -388,6 +429,7 @@ fun CardStack(
                                             ) { value, _ -> item.offsetY = value }
                                             // Hand the card back to the stack only
                                             // once it is genuinely home again.
+                                            item.rawY = 0f
                                             item.dragging = false
                                             setLifted(p, item, false)
                                         }
@@ -426,6 +468,7 @@ fun CardStack(
                                 animateIn = item.animateIn,
                                 onEntered = { item.animateIn = false },
                                 hidden = { item.overlay },
+                                shape = cardShapeFor(p.style.layout, cardW.value / KeyboardCanvas.WIDTH_VALUE),
                                 offsetY = { item.offsetY },
                                 slideOut = side * ep,
                                 onBounds = { rect, w, h ->
@@ -469,6 +512,7 @@ fun CardStack(
                         animateIn = false,
                         onEntered = {},
                         hidden = { false },
+                        shape = CardShape,
                         offsetY = { 0f },
                         slideOut = if (editId == null) 0f else ep,
                         onBounds = { _, _, _ -> },
@@ -601,6 +645,7 @@ private fun StackCard(
     animateIn: Boolean,
     onEntered: () -> Unit,
     hidden: () -> Boolean,
+    shape: Shape,
     offsetY: () -> Float,
     slideOut: Float,
     onBounds: (Rect, Float, Float) -> Unit,
@@ -663,9 +708,9 @@ private fun StackCard(
                     coords.size.height.toFloat(),
                 )
             }
-            .clip(CardShape)
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), CardShape)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -692,8 +737,7 @@ fun PresetCardFace(
     preset: KeyboardPreset,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(GlassContract.CORNER_DP.dp)
-    Box(modifier.fillMaxSize().clip(shape)) {
+    Box(modifier.fillMaxSize()) {
         // Nothing but the keyboard and its suggestion bar. The layout number,
         // name and details live under the progress row, and the remove control
         // sits with them, so the preview is never covered by chrome.
@@ -769,9 +813,9 @@ fun LiveDragLayer(drag: LiveDrag) {
                     val d = drag.offsetY()
                     rotationZ = if (d > 0f) 0f else (d / drag.hPx).coerceIn(-1f, 1f) * 3f
                 }
-                .clip(CardShape)
+                .clip(drag.shape)
                 .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), CardShape),
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), drag.shape),
         ) {
             PresetCardFace(drag.preset)
         }
@@ -792,9 +836,8 @@ fun FlyingCardLayer(card: FlyingCard, onFinished: () -> Unit) {
         // Constant speed equal to the release speed, so the card keeps going
         // exactly as it was thrown. An ease-in tween restarted it from zero,
         // which is the separate little jolt after letting go.
-        val speed = maxOf(abs(card.velocityY), travel / 0.42f)
-        val exitMillis = (travel / speed * 1000f).toInt()
-            .coerceIn(150, MotionContract.CARD_EXIT_MILLIS)
+        val speed = maxOf(abs(card.velocityY), travel / 0.7f)
+        val exitMillis = (travel / speed * 1000f).toInt().coerceIn(120, 700)
         LaunchedEffect(card.key) {
             progress.animateTo(1f, tween(exitMillis, easing = LinearEasing))
             onFinished()
@@ -819,9 +862,9 @@ fun FlyingCardLayer(card: FlyingCard, onFinished: () -> Unit) {
                     scaleY = sc
                     rotationZ = card.rotation * (1f + 0.6f * p)
                 }
-                .clip(CardShape)
+                .clip(card.shape)
                 .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), CardShape),
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), card.shape),
         ) {
             PresetCardFace(card.preset)
         }

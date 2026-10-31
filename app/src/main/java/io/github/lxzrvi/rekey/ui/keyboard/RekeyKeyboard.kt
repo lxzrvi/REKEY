@@ -7,8 +7,13 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -29,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -102,13 +108,6 @@ private val Symbols1 = "1234567890".map { it.toString() }
 private val Symbols2 = listOf("@", "#", "$", "%", "&", "-", "+", "(", ")")
 private val Symbols3 = listOf("*", "\"", "'", ":", ";", "!", "?")
 
-/**
- * Single-code-point emoji only. A ZWJ sequence or a variation selector would be
- * split in half by a single KEYCODE_DEL, leaving a broken glyph behind.
- */
-private val EmojiRow1 = listOf("\uD83D\uDE00", "\uD83D\uDE01", "\uD83D\uDE02", "\uD83E\uDD23", "\uD83D\uDE0A", "\uD83D\uDE0D", "\uD83D\uDE18", "\uD83D\uDE0E", "\uD83E\uDD14")
-private val EmojiRow2 = listOf("\uD83D\uDE22", "\uD83D\uDE2D", "\uD83D\uDE21", "\uD83D\uDC4D", "\uD83D\uDC4E", "\uD83D\uDC4F", "\uD83D\uDE4F", "\uD83D\uDCAA", "\uD83D\uDD25")
-private val EmojiRow3 = listOf("\uD83D\uDC80", "\u2728", "\uD83C\uDF89", "\uD83D\uDCAF", "\uD83C\uDF1F", "\uD83D\uDE34", "\uD83E\uDD2F", "\uD83E\uDD73")
 
 /** Cards are previews, so their suggestion strip shows fixed specimen words. */
 val KeyboardPreviewSuggestions: List<String> = listOf("Hello", "Design", "Today", "Great", "Thanks")
@@ -117,7 +116,7 @@ val KeyboardPreviewSuggestions: List<String> = listOf("Hello", "Design", "Today"
 enum class KeyAction {
     TEXT, SPACE, ENTER, BACKSPACE, LANGUAGE, PASTE, CYCLE_THEME,
     LEFT, RIGHT, UP, DOWN, SELECT_ALL, COPY, CUT, HOME, END,
-    BOLD, ITALIC, UNDERLINE,
+    BOLD, ITALIC, UNDERLINE, HIDE, TOGGLE_FLOAT, SUGGEST,
 }
 
 private enum class ShiftState { OFF, ON, CAPS }
@@ -152,6 +151,8 @@ fun RekeyKeyboard(
     rightInsetPx: Int = 0,
     interactive: Boolean = true,
     systemHaptic: Boolean = true,
+    floating: Boolean = false,
+    onFloatingDrag: (Float) -> Unit = {},
     suggestions: List<String> = emptyList(),
     onKey: (KeyAction, String) -> Unit = { _, _ -> },
 ) {
@@ -231,6 +232,16 @@ fun RekeyKeyboard(
                         bottom = lay.padBottom.dp + navBottom,
                     ),
             ) {
+                if (style.suggestions.grabberEnabled) {
+                    Grabber(
+                        spec = style.suggestions,
+                        ui = ui,
+                        floating = floating,
+                        onHide = { emit(KeyAction.HIDE) },
+                        onFloat = { emit(KeyAction.TOGGLE_FLOAT) },
+                        onDrag = onFloatingDrag,
+                    )
+                }
                 if (style.arrows.enabled) {
                     ArrowBar(style.arrows, ui, gap) { emit(it) }
                     Spacer(Modifier.height(rowGap))
@@ -246,7 +257,7 @@ fun RekeyKeyboard(
                         open = open,
                         suggestions = suggestions,
                         onToggle = { open = !open },
-                        onSuggestion = { emit(KeyAction.TEXT, "$it ") },
+                        onSuggestion = { emit(KeyAction.SUGGEST, it) },
                         onPaste = { if (open) emit(KeyAction.PASTE) },
                         onTheme = { if (open) emit(KeyAction.CYCLE_THEME) },
                         onLanguage = { if (open) emit(KeyAction.LANGUAGE) },
@@ -436,6 +447,55 @@ private fun KeyboardBackground(
     }
 }
 
+/**
+ * The handle above the suggestion strip.
+ *
+ * Swipe down closes the keyboard, double tap toggles floating mode, and while
+ * floating a drag moves the board. It is deliberately a separate composable so
+ * its gestures never reach the keys underneath.
+ */
+@Composable
+private fun Grabber(
+    spec: SuggestionStyle,
+    ui: Ui,
+    floating: Boolean,
+    onHide: () -> Unit,
+    onFloat: () -> Unit,
+    onDrag: (Float) -> Unit,
+) {
+    val tint = spec.grabberColor ?: ui.p.muted
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(18.dp)
+            .pointerInput(floating) {
+                var dragged = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { dragged = 0f },
+                    onVerticalDrag = { change, dy ->
+                        change.consume()
+                        dragged += dy
+                        if (floating) onDrag(dy)
+                    },
+                    onDragEnd = { if (!floating && dragged > 24f) onHide() },
+                    onDragCancel = { },
+                )
+            }
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = { onFloat() })
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .width(spec.grabberWidth.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(tint.copy(alpha = 0.55f)),
+        )
+    }
+}
+
 /** Page 6's result: cursor keys plus whichever editing tools were switched on. */
 @Composable
 private fun ArrowBar(
@@ -447,44 +507,71 @@ private fun ArrowBar(
     val bg = spec.color ?: ui.p.special
     val tint = spec.iconColor ?: ui.textColor
     val shape = RoundedCornerShape(spec.radius.dp)
+    val keyW = 36.dp
     Row(
         Modifier.fillMaxWidth().height(spec.height.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
-        @Composable
-        fun btn(glyph: Glyph, action: KeyAction) {
-            KeyBox(
-                modifier = Modifier.weight(1f).height(spec.height.dp),
-                bg = bg,
-                pressedBg = ui.specialBg,
-                shape = shape,
-                interactive = ui.interactive,
-                onHaptic = ui.haptic,
-                onPress = { onAction(action) },
-            ) { RekeyGlyph(glyph, tint, Modifier.size(18.dp)) }
+        // Tools scroll; the four cursor keys never do. Giving every button an
+        // equal weight squeezed twelve of them into one row, which is why the
+        // bar looked broken.
+        Row(
+            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            @Composable
+            fun tool(glyph: Glyph, action: KeyAction) {
+                KeyBox(
+                    modifier = Modifier.width(keyW).height(spec.height.dp),
+                    bg = bg,
+                    pressedBg = ui.specialBg,
+                    shape = shape,
+                    interactive = ui.interactive,
+                    onHaptic = ui.haptic,
+                    onPress = { onAction(action) },
+                ) { RekeyGlyph(glyph, tint, Modifier.size(18.dp)) }
+            }
+            if (spec.selectAll) tool(Glyph.SELECT_ALL, KeyAction.SELECT_ALL)
+            if (spec.copy) tool(Glyph.COPY, KeyAction.COPY)
+            if (spec.cut) tool(Glyph.CUT, KeyAction.CUT)
+            if (spec.paste) tool(Glyph.PASTE, KeyAction.PASTE)
+            if (spec.bold) tool(Glyph.BOLD, KeyAction.BOLD)
+            if (spec.italic) tool(Glyph.ITALIC, KeyAction.ITALIC)
+            if (spec.underline) tool(Glyph.UNDERLINE, KeyAction.UNDERLINE)
+            if (spec.homeEnd) {
+                tool(Glyph.HOME, KeyAction.HOME)
+                tool(Glyph.END, KeyAction.END)
+            }
         }
-        if (spec.selectAll) btn(Glyph.SELECT_ALL, KeyAction.SELECT_ALL)
-        if (spec.copy) btn(Glyph.COPY, KeyAction.COPY)
-        if (spec.cut) btn(Glyph.CUT, KeyAction.CUT)
-        if (spec.paste) btn(Glyph.PASTE, KeyAction.PASTE)
-        if (spec.bold) btn(Glyph.BOLD, KeyAction.BOLD)
-        if (spec.italic) btn(Glyph.ITALIC, KeyAction.ITALIC)
-        if (spec.underline) btn(Glyph.UNDERLINE, KeyAction.UNDERLINE)
-        if (spec.homeEnd) {
-            btn(Glyph.HOME, KeyAction.HOME)
-            btn(Glyph.END, KeyAction.END)
+        Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+            listOf(
+                Glyph.CHEVRON_LEFT to KeyAction.LEFT,
+                Glyph.CHEVRON_UP to KeyAction.UP,
+                Glyph.CHEVRON_DOWN to KeyAction.DOWN,
+                Glyph.CHEVRON_RIGHT to KeyAction.RIGHT,
+            ).forEach { (g, a) ->
+                KeyBox(
+                    modifier = Modifier.width(keyW).height(spec.height.dp),
+                    bg = bg,
+                    pressedBg = ui.specialBg,
+                    shape = shape,
+                    interactive = ui.interactive,
+                    onHaptic = ui.haptic,
+                    onPress = { onAction(a) },
+                ) { RekeyGlyph(g, tint, Modifier.size(18.dp)) }
+            }
         }
-        btn(Glyph.CHEVRON_LEFT, KeyAction.LEFT)
-        btn(Glyph.CHEVRON_UP, KeyAction.UP)
-        btn(Glyph.CHEVRON_DOWN, KeyAction.DOWN)
-        btn(Glyph.CHEVRON_RIGHT, KeyAction.RIGHT)
     }
 }
 
 /**
- * Three rows of emoji occupying exactly the height of the three letter rows, so
- * opening it never resizes the keyboard. The last slot is a backspace.
+ * Grouped emoji: a category rail, a scrolling grid, and a backspace.
+ *
+ * The whole panel occupies exactly the height of the three letter rows, so
+ * switching to emoji never resizes the keyboard or moves the keys under the
+ * owner's thumbs.
  */
 @Composable
 private fun EmojiPanel(
@@ -495,28 +582,68 @@ private fun EmojiPanel(
     onPick: (String) -> Unit,
     onBackspace: () -> Unit,
 ) {
-    val rows = listOf(EmojiRow1, EmojiRow2, EmojiRow3)
-    rows.forEachIndexed { index, row ->
-        if (index > 0) Spacer(Modifier.height(rowGap))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-            row.forEach { e ->
-                KeyBox(
-                    modifier = Modifier.weight(1f).height(ui.keyH),
-                    bg = ui.keyBg,
-                    pressedBg = ui.specialBg,
-                    border = ui.borderCol,
-                    borderWidth = ui.borderW,
-                    shape = ui.keyShape,
-                    interactive = ui.interactive,
-                    onHaptic = ui.haptic,
-                    onPress = { onPick(e) },
-                ) {
-                    Text(text = e, fontSize = 20.sp, lineHeight = 24.sp, maxLines = 1)
+    var group by remember { mutableIntStateOf(0) }
+    val panelH = ui.keyH * 3 + rowGap * 2
+    val railH = 30.dp
+    Column(Modifier.fillMaxWidth().height(panelH)) {
+        Row(
+            Modifier.fillMaxWidth().height(railH),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            Row(
+                Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                EmojiGroups.forEachIndexed { i, g ->
+                    val on = i == group
+                    KeyBox(
+                        modifier = Modifier.width(38.dp).height(railH),
+                        bg = if (on) ui.specialBg else Color.Transparent,
+                        pressedBg = ui.specialBg,
+                        shape = RoundedCornerShape(8.dp),
+                        interactive = ui.interactive,
+                        onHaptic = ui.haptic,
+                        onPress = { group = i },
+                    ) {
+                        RekeyGlyph(g.icon, if (on) p.enter else ui.textColor, Modifier.size(16.dp))
+                    }
                 }
             }
-            if (index == rows.lastIndex) {
-                SpecialKey(ui, 1f, repeat = true, onPress = onBackspace) {
-                    RekeyGlyph(Glyph.BACKSPACE, ui.textColor, Modifier.size(19.dp))
+            KeyBox(
+                modifier = Modifier.width(40.dp).height(railH),
+                bg = ui.specialBg,
+                pressedBg = ui.specialBg,
+                shape = RoundedCornerShape(8.dp),
+                repeatOnHold = true,
+                interactive = ui.interactive,
+                onHaptic = ui.haptic,
+                onPress = onBackspace,
+            ) { RekeyGlyph(Glyph.BACKSPACE, ui.textColor, Modifier.size(17.dp)) }
+        }
+        Spacer(Modifier.height(rowGap))
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(remember(group) { ScrollState(0) }),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            EmojiGroups[group].items.chunked(8).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { e ->
+                        KeyBox(
+                            modifier = Modifier.weight(1f).height(ui.keyH),
+                            bg = Color.Transparent,
+                            pressedBg = ui.specialBg,
+                            shape = ui.keyShape,
+                            interactive = ui.interactive,
+                            onHaptic = ui.haptic,
+                            onPress = { onPick(e) },
+                        ) { Text(text = e, fontSize = 22.sp, lineHeight = 26.sp, maxLines = 1) }
+                    }
+                    repeat(8 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -589,11 +716,11 @@ private fun KeyboardToolbar(
             }
         }
 
-        val pillShape = RoundedCornerShape(30.dp)
+        val pillShape = RoundedCornerShape(spec.pillRadius.dp)
         Row(
             Modifier
                 .width(pillWidth).height(37.dp)
-                .clip(pillShape).background(spec.color ?: ui.keyBg)
+                .clip(pillShape).background(spec.pillColor ?: spec.color ?: ui.keyBg)
                 .border(1.dp, ui.borderCol ?: p.border, pillShape)
                 .padding(1.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -606,10 +733,11 @@ private fun KeyboardToolbar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                ToolBtn(ui, Glyph.PASTE, onPaste)
-                ToolBtn(ui, Glyph.TRANSLATE) {}
-                ToolBtn(ui, Glyph.PALETTE, onTheme)
-                ToolBtn(ui, Glyph.GLOBE, onLanguage)
+                val iconTint = spec.pillIconColor ?: ui.textColor
+                if (spec.pillPaste) ToolBtn(ui, Glyph.PASTE, iconTint, onPaste)
+                if (spec.pillTranslate) ToolBtn(ui, Glyph.TRANSLATE, iconTint) {}
+                if (spec.pillTheme) ToolBtn(ui, Glyph.PALETTE, iconTint, onTheme)
+                if (spec.pillLanguage) ToolBtn(ui, Glyph.GLOBE, iconTint, onLanguage)
             }
             KeyBox(
                 modifier = Modifier.size(35.dp),
@@ -702,7 +830,7 @@ private fun SpecialText(ui: Ui, s: String) {
 }
 
 @Composable
-private fun ToolBtn(ui: Ui, glyph: Glyph, onPress: () -> Unit) {
+private fun ToolBtn(ui: Ui, glyph: Glyph, tint: Color, onPress: () -> Unit) {
     KeyBox(
         modifier = Modifier.size(width = 31.dp, height = 34.dp),
         bg = Color.Transparent,
@@ -712,7 +840,7 @@ private fun ToolBtn(ui: Ui, glyph: Glyph, onPress: () -> Unit) {
         onHaptic = ui.haptic,
         onPress = onPress,
     ) {
-        RekeyGlyph(glyph, ui.textColor, Modifier.size(21.dp))
+        RekeyGlyph(glyph, tint, Modifier.size(21.dp))
     }
 }
 
