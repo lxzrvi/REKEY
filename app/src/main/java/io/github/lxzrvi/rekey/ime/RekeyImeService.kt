@@ -1,6 +1,9 @@
 package io.github.lxzrvi.rekey.ime
 
 import android.content.ClipboardManager
+import android.graphics.Color as AndroidColor
+import android.os.Build
+import android.view.WindowManager
 import android.inputmethodservice.InputMethodService
 import android.view.KeyEvent
 import android.view.View
@@ -9,11 +12,18 @@ import android.view.inputmethod.InputConnection
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -60,6 +70,9 @@ class RekeyImeService :
     private var systemDark by mutableStateOf(false)
     private var suggestions by mutableStateOf(Words.pick())
     private var destroyed = false
+    private var navBottomPx by mutableIntStateOf(0)
+    private var navLeftPx by mutableIntStateOf(0)
+    private var navRightPx by mutableIntStateOf(0)
 
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val viewModelStore: ViewModelStore get() = store
@@ -88,8 +101,40 @@ class RekeyImeService :
         moveLifecycle(Lifecycle.State.CREATED)
     }
 
+    /**
+     * Draw behind the system bars and lift the keys above them.
+     *
+     * Same approach as Unexpected-Keyboard: the window stops fitting insets, the
+     * view reads systemBars | displayCutout, the bottom inset is added to the
+     * keyboard's own bottom padding, and the navigation bar is painted the
+     * keyboard's colour so the two read as one surface.
+     */
+    private fun setUpEdgeToEdge() {
+        val w = window?.window ?: return
+        WindowCompat.setDecorFitsSystemWindows(w, false)
+        w.navigationBarColor = AndroidColor.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 29) w.isNavigationBarContrastEnforced = false
+        if (Build.VERSION.SDK_INT >= 28) {
+            val attrs = w.attributes
+            attrs.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            w.attributes = attrs
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(w.decorView) { _, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+            )
+            navBottomPx = bars.bottom
+            navLeftPx = bars.left
+            navRightPx = bars.right
+            insets
+        }
+        ViewCompat.requestApplyInsets(w.decorView)
+    }
+
     override fun onCreateInputView(): View {
         reloadTheme()
+        setUpEdgeToEdge()
         val view = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@RekeyImeService)
             setViewTreeViewModelStoreOwner(this@RekeyImeService)
@@ -124,6 +169,7 @@ class RekeyImeService :
 
     override fun onWindowShown() {
         super.onWindowShown()
+        setUpEdgeToEdge()
         // The window can be rebuilt between sessions; re-attach every time.
         attachOwnersToWindow()
         moveLifecycle(Lifecycle.State.RESUMED)
@@ -179,9 +225,22 @@ class RekeyImeService :
             ThemeMode.DARK -> true
         }
         RekeyTheme(settings = settings, darkTheme = dark) {
+            // Keep the navigation bar the same colour as the tray, with icons
+            // that stay legible on it.
+            LaunchedEffect(palette.canvas) {
+                val w = window?.window ?: return@LaunchedEffect
+                w.navigationBarColor = palette.canvas.toArgb()
+                if (Build.VERSION.SDK_INT >= 26) {
+                    WindowCompat.getInsetsController(w, w.decorView)
+                        .isAppearanceLightNavigationBars = palette.canvas.luminance() > 0.5f
+                }
+            }
             RekeyKeyboard(
                 palette = palette,
                 modifier = Modifier.fillMaxWidth(),
+                bottomInsetPx = navBottomPx,
+                leftInsetPx = navLeftPx,
+                rightInsetPx = navRightPx,
                 suggestions = suggestions,
                 onKey = ::handleKey,
             )

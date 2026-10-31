@@ -1,7 +1,7 @@
 package io.github.lxzrvi.rekey.ui.home
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -59,6 +59,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -73,7 +74,6 @@ import io.github.lxzrvi.rekey.design.MotionContract
 import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
-import io.github.lxzrvi.rekey.ui.keyboard.CardHeaderHeight
 import io.github.lxzrvi.rekey.ui.keyboard.ImeToolbarHeight
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardPreviewSuggestions
 import io.github.lxzrvi.rekey.ui.keyboard.ScaledKeyboard
@@ -93,7 +93,6 @@ private val SlotSpring = spring<Float>(dampingRatio = 1f, stiffness = 200f)
 // Critically damped: an underdamped return overshoots past zero, which
 // showed up as the card shaking and rotating after a downward pull.
 private val ReturnSpring = spring<Float>(dampingRatio = 1f, stiffness = 220f)
-private val ExitEasing = CubicBezierEasing(0.22f, 0.61f, 0.36f, 1f)
 
 /** Card corner radius is fixed by the glass contract. */
 private val CardShape = RoundedCornerShape(GlassContract.CORNER_DP.dp)
@@ -114,6 +113,8 @@ class FlyingCard(
     val height: Float,
     val direction: Float,
     val rotation: Float,
+    /** Finger speed at release, px/s. The flight continues at exactly this speed. */
+    val velocityY: Float = 0f,
 )
 
 /**
@@ -224,7 +225,7 @@ fun CardStack(
         if (target > n) settleTo(n.coerceAtLeast(0))
     }
 
-    fun removePreset(p: KeyboardPreset) {
+    fun removePreset(p: KeyboardPreset, velocityY: Float = 0f) {
         // The shipped layouts are the fallback set. Both the X and the upward
         // swipe land here, so one guard covers both and says why it refused.
         if (KeyboardPalettes.isDefault(p)) {
@@ -249,6 +250,7 @@ fun CardStack(
                     height = item.layoutH.takeIf { it > 0f } ?: b.height,
                     direction = -1f,
                     rotation = (item.offsetY / hPx).coerceIn(-1f, 1f) * 3f,
+                    velocityY = velocityY,
                 ),
             )
         }
@@ -321,7 +323,6 @@ fun CardStack(
                 } else {
                     next
                 }
-                setLifted(p, item, item.offsetY < -hPx * 0.06f)
             }
 
             Box(
@@ -348,6 +349,11 @@ fun CardStack(
                                 if (!item.removing) {
                                     item.returnJob?.cancel()
                                     item.dragging = true
+                                    // Hand over at the current offset, where the
+                                    // two copies are pixel-identical. Swapping at
+                                    // a threshold mid-gesture is what looked like
+                                    // a jump; swapping at rest is invisible.
+                                    setLifted(p, item, true)
                                 }
                             }
                         },
@@ -365,21 +371,21 @@ fun CardStack(
                                     if (dismiss && !KeyboardPalettes.isDefault(p)) {
                                         item.dragging = false
                                         setLifted(p, item, false)
-                                        removePreset(p)
+                                        removePreset(p, velocity)
                                     } else {
                                         if (dismiss) onNotice(defaultNotice)
                                         item.returnJob = scope.launch {
                                             animate(
                                                 initialValue = item.offsetY,
                                                 targetValue = 0f,
-                                                // A refused fling must not keep
-                                                // travelling upward first.
-                                                initialVelocity = if (dismiss) 0f else velocity,
+                                                // Always start from rest. Even a
+                                                // critically damped spring crosses
+                                                // zero once if it is handed a velocity,
+                                                // and that crossing was the up-down
+                                                // shake after a downward pull.
+                                                initialVelocity = 0f,
                                                 animationSpec = ReturnSpring,
-                                            ) { value, _ ->
-                                                item.offsetY = value
-                                                setLifted(p, item, value < -hPx * 0.06f)
-                                            }
+                                            ) { value, _ -> item.offsetY = value }
                                             // Hand the card back to the stack only
                                             // once it is genuinely home again.
                                             item.dragging = false
@@ -444,11 +450,7 @@ fun CardStack(
                                     }
                                 },
                             ) {
-                                PresetCardFace(
-                                    preset = p,
-                                    layoutNumber = (presets.indexOfFirst { it.id == p.id } + 1).coerceAtLeast(1),
-                                    onRemove = { removePreset(p) },
-                                )
+                                PresetCardFace(preset = p)
                             }
                         }
                     }
@@ -521,6 +523,69 @@ fun CardStack(
             }
             Spacer(Modifier.width(12.dp))
             Text(two(n), color = muted, fontSize = 13.sp)
+        }
+
+        // Layout number, name and details, centred under the progress row. The
+        // card itself stays a clean keyboard preview.
+        Spacer(Modifier.height(14.dp))
+        val current = live().getOrNull(cur)
+        val currentNumber = if (current == null) 0 else presets.indexOfFirst { it.id == current.id } + 1
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp).testTag("card_caption"),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = if (current != null) {
+                    stringResource(R.string.card_layout_label, currentNumber).uppercase()
+                } else {
+                    stringResource(R.string.card_new_label).uppercase()
+                },
+                fontSize = 10.sp,
+                letterSpacing = 1.2.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = when {
+                    current == null -> stringResource(R.string.card_new_title)
+                    current.placeholder -> stringResource(R.string.editor_unnamed)
+                    else -> current.name
+                },
+                fontSize = 19.sp,
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.3).sp,
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            val sub = when {
+                current == null -> stringResource(R.string.card_new_hint)
+                current.placeholder -> stringResource(R.string.editor_tap_to_edit)
+                else -> current.details
+            }
+            if (sub.isNotBlank()) {
+                Text(
+                    text = sub,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            if (current != null) {
+                Spacer(Modifier.height(6.dp))
+                FrostedCross(
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    paletteCanvas = MaterialTheme.colorScheme.surface,
+                    description = stringResource(R.string.remove_card_description, currentNumber),
+                    onClick = { removePreset(current) },
+                )
+            }
         }
     }
 }
@@ -625,97 +690,21 @@ private fun StackCard(
 @Composable
 fun PresetCardFace(
     preset: KeyboardPreset,
-    layoutNumber: Int,
-    onRemove: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(GlassContract.CORNER_DP.dp)
-    BoxWithConstraints(modifier.fillMaxSize().clip(shape)) {
-        // The keyboard canvas is 440 dp wide and scaled to the card. The label
-        // and the X are placed in that same scaled space so they always sit over
-        // the keyboard's toolbar strip, at every card size.
-        val scale = maxWidth.value / KeyboardCanvas.WIDTH.value
-        val stripTop = (KeyboardCanvas.OUTER * scale).dp
-        // Leave a breath between the name panel and the toolbar below it.
-        val stripH = ((CardHeaderHeight.value - 8f) * scale).dp
-        val padH = (14f * scale).dp
-        val closeSize = 30.dp
-
-        Box(Modifier.fillMaxSize()) {
-            ScaledKeyboard(
-                palette = preset.palette,
-                modifier = Modifier.fillMaxWidth(),
-                showToolbar = true,
-                headerHeight = ImeToolbarHeight,
-                extraHeaderHeight = CardHeaderHeight,
-                interactive = false,
-                suggestions = KeyboardPreviewSuggestions,
-            )
-        }
-        Box(
-            Modifier
-                .align(Alignment.TopStart)
-                .padding(
-                    start = padH,
-                    end = if (onRemove != null) padH + closeSize + 8.dp else padH,
-                    top = stripTop,
-                )
-                .fillMaxWidth()
-                .height(stripH)
-                .clip(RoundedCornerShape(11.dp))
-                .background(preset.palette.canvas.copy(alpha = 0.88f))
-                .border(1.dp, preset.palette.text.copy(alpha = 0.10f), RoundedCornerShape(11.dp))
-                .padding(horizontal = 10.dp, vertical = 2.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Column {
-                Text(
-                    text = stringResource(R.string.card_layout_label, layoutNumber),
-                    color = preset.palette.text.copy(alpha = 0.85f),
-                    fontSize = 9.sp,
-                    lineHeight = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.4.sp,
-                    maxLines = 1,
-                )
-                Text(
-                    text = if (preset.placeholder) stringResource(R.string.editor_unnamed) else preset.name,
-                    color = preset.palette.text,
-                    fontSize = 16.sp,
-                    lineHeight = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.3).sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                val detailLine = if (preset.placeholder) {
-                    stringResource(R.string.editor_tap_to_edit)
-                } else {
-                    preset.details
-                }
-                if (detailLine.isNotBlank()) {
-                    Text(
-                        text = detailLine,
-                        color = preset.palette.text.copy(alpha = 0.92f),
-                        fontSize = 9.5.sp,
-                        lineHeight = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-        if (onRemove != null) {
-            FrostedCross(
-                tint = preset.palette.text,
-                paletteCanvas = preset.palette.canvas,
-                description = stringResource(R.string.remove_card_description, layoutNumber),
-                onClick = onRemove,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = stripTop + (stripH - closeSize) / 2, end = padH),
-            )
-        }
+    Box(modifier.fillMaxSize().clip(shape)) {
+        // Nothing but the keyboard and its suggestion bar. The layout number,
+        // name and details live under the progress row, and the remove control
+        // sits with them, so the preview is never covered by chrome.
+        ScaledKeyboard(
+            palette = preset.palette,
+            modifier = Modifier.fillMaxWidth(),
+            showToolbar = true,
+            headerHeight = ImeToolbarHeight,
+            interactive = false,
+            suggestions = KeyboardPreviewSuggestions,
+        )
     }
 }
 
@@ -779,7 +768,7 @@ fun LiveDragLayer(drag: LiveDrag) {
                 .background(MaterialTheme.colorScheme.surface)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), CardShape),
         ) {
-            PresetCardFace(drag.preset, drag.layoutNumber, onRemove = null)
+            PresetCardFace(drag.preset)
         }
     }
 }
@@ -792,13 +781,19 @@ fun LiveDragLayer(drag: LiveDrag) {
 @Composable
 fun FlyingCardLayer(card: FlyingCard, onFinished: () -> Unit) {
     val progress = remember { Animatable(0f) }
-    LaunchedEffect(card.key) {
-        progress.animateTo(1f, tween(MotionContract.CARD_EXIT_MILLIS, easing = ExitEasing))
-        onFinished()
-    }
     val density = LocalDensity.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val travel = card.top + card.height + 60f
+        // Constant speed equal to the release speed, so the card keeps going
+        // exactly as it was thrown. An ease-in tween restarted it from zero,
+        // which is the separate little jolt after letting go.
+        val speed = maxOf(abs(card.velocityY), travel / 0.42f)
+        val exitMillis = (travel / speed * 1000f).toInt()
+            .coerceIn(150, MotionContract.CARD_EXIT_MILLIS)
+        LaunchedEffect(card.key) {
+            progress.animateTo(1f, tween(exitMillis, easing = LinearEasing))
+            onFinished()
+        }
         Box(
             Modifier
                 .offset {
@@ -817,13 +812,13 @@ fun FlyingCardLayer(card: FlyingCard, onFinished: () -> Unit) {
                     val sc = 1f - 0.06f * p
                     scaleX = sc
                     scaleY = sc
-                    rotationZ = card.rotation * (1f - p)
+                    rotationZ = card.rotation * (1f + 0.6f * p)
                 }
                 .clip(CardShape)
                 .background(MaterialTheme.colorScheme.surface)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), CardShape),
         ) {
-            PresetCardFace(card.preset, card.layoutNumber, onRemove = null)
+            PresetCardFace(card.preset)
         }
     }
 }

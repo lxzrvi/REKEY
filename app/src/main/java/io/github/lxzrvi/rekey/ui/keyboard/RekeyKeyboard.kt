@@ -74,14 +74,11 @@ object KeyboardCanvas {
     /** Toolbar strip + four key rows + padding. */
     val HEIGHT: Dp = 265.dp
 
-    /**
-     * The card shows the name strip AND the real toolbar above the same key
-     * board: 225 (keys + padding) + 40 (toolbar) + 72 (name strip).
-     */
-    val CARD_HEIGHT: Dp = 337.dp
+    /** The card is the keyboard itself, suggestion bar included. */
+    val CARD_HEIGHT: Dp = 265.dp
 
     const val RATIO = 440f / 265f
-    const val CARD_RATIO = 440f / 337f
+    const val CARD_RATIO = 440f / 265f
 
     const val OUTER = 7f
 }
@@ -131,6 +128,9 @@ fun RekeyKeyboard(
     showToolbar: Boolean = true,
     headerHeight: Dp = ImeToolbarHeight,
     extraHeaderHeight: Dp = 0.dp,
+    bottomInsetPx: Int = 0,
+    leftInsetPx: Int = 0,
+    rightInsetPx: Int = 0,
     interactive: Boolean = true,
     suggestions: List<String> = emptyList(),
     onKey: (KeyAction, String) -> Unit = { _, _ -> },
@@ -152,6 +152,13 @@ fun RekeyKeyboard(
     BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
         val kbWidth = minOf(maxWidth, KeyboardCanvas.WIDTH)
         val inner = kbWidth - Outer * 2
+        // Unexpected-Keyboard's rule: the bottom inset is ADDITIVE so the keys
+        // clear the navigation bar, while the side insets only widen the gutter
+        // when the device is cut out further than the design margin.
+        val density = LocalDensity.current
+        val navBottom = with(density) { bottomInsetPx.toDp() }
+        val padStart = maxOf(Outer, with(density) { leftInsetPx.toDp() })
+        val padEnd = maxOf(Outer, with(density) { rightInsetPx.toDp() })
         val compact = kbWidth < 350.dp
         val gap = if (compact) 3.dp else 5.dp
         val rowGap = if (compact) 7.dp else 8.dp
@@ -175,7 +182,7 @@ fun RekeyKeyboard(
                 .width(kbWidth)
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
                 .background(p.canvas)
-                .padding(start = Outer, end = Outer, top = PadTop, bottom = PadBottom),
+                .padding(start = padStart, end = padEnd, top = PadTop, bottom = PadBottom + navBottom),
         ) {
             // The card's name block sits above the toolbar; the IME has none.
             if (extraHeaderHeight > 0.dp) {
@@ -655,6 +662,9 @@ fun ScaledKeyboard(
     showToolbar: Boolean = true,
     headerHeight: Dp = ImeToolbarHeight,
     extraHeaderHeight: Dp = 0.dp,
+    bottomInsetPx: Int = 0,
+    leftInsetPx: Int = 0,
+    rightInsetPx: Int = 0,
     interactive: Boolean = true,
     suggestions: List<String> = emptyList(),
     onKey: (KeyAction, String) -> Unit = { _, _ -> },
@@ -670,6 +680,9 @@ fun ScaledKeyboard(
                 showToolbar = showToolbar,
                 headerHeight = headerHeight,
                 extraHeaderHeight = extraHeaderHeight,
+                bottomInsetPx = bottomInsetPx,
+                leftInsetPx = leftInsetPx,
+                rightInsetPx = rightInsetPx,
                 interactive = interactive,
                 suggestions = suggestions,
                 onKey = onKey,

@@ -68,7 +68,6 @@ private val EditorBarHeight = 48.dp
 @Composable
 fun PresetEditor(
     preset: KeyboardPreset,
-    layoutNumber: Int,
     anchor: CardAnchor,
     progress: Float,
     topInsetPx: Float,
@@ -137,11 +136,7 @@ fun PresetEditor(
                 .background(MaterialTheme.colorScheme.surface)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), EditorShape),
         ) {
-            PresetCardFace(
-                preset = preset,
-                layoutNumber = layoutNumber,
-                onRemove = null,
-            )
+            PresetCardFace(preset = preset)
         }
 
         // Editable fields fade in under the card once it has landed.

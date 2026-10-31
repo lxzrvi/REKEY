@@ -358,7 +358,6 @@ fun HomeScreen(
             )
             PresetEditor(
                 preset = editingPreset,
-                layoutNumber = (presets.indexOfFirst { it.id == editingPreset.id } + 1).coerceAtLeast(1),
                 anchor = requireNotNull(anchor),
                 progress = editorProgress,
                 topInsetPx = topInsetPx,

@@ -56,4 +56,7 @@
     <string name="notice_preset_applied">Layout applied to keyboard</string>
     <string name="notice_presets_reset">Default layouts restored</string>
     <string name="notice_name_saved">Name updated</string>
+    <string name="card_new_label">New</string>
+    <string name="card_new_title">New layout</string>
+    <string name="card_new_hint">Tap the card to start</string>
 </resources>
