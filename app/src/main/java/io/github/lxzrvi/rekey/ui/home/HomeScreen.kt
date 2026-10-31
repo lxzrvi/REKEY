@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,12 +42,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -98,6 +102,11 @@ fun HomeScreen(
     var selectedIndex by remember { mutableStateOf(preferences.loadSelectedCard()) }
     var anchor by remember { mutableStateOf<CardAnchor?>(null) }
     var editorOpen by remember { mutableStateOf(false) }
+    var liveDrag by remember { mutableStateOf<LiveDrag?>(null) }
+    var testMode by rememberSaveable { mutableStateOf(false) }
+    var presetsHeightPx by remember { mutableFloatStateOf(0f) }
+    val testFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
 
     val density = LocalDensity.current
     val drawerProgress by animateFloatAsState(
@@ -117,6 +126,15 @@ fun HomeScreen(
         label = "editorProgress",
     )
 
+    val testProgress by animateFloatAsState(
+        targetValue = if (testMode) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (testMode) MotionContract.TEST_ENTER_MILLIS else MotionContract.TEST_EXIT_MILLIS,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "testProgress",
+    )
+
     // The anchor is kept after closing so the card can animate back into place.
     val editingPreset = presets.firstOrNull { it.id == anchor?.presetId }
 
@@ -130,8 +148,18 @@ fun HomeScreen(
         editorOpen = false
     }
 
-    BackHandler(enabled = editorOpen || drawerOpen) {
-        if (editorOpen) closeEditor() else drawerOpen = false
+    fun closeTest() {
+        keyboard?.hide()
+        focusManager.clearFocus()
+        testMode = false
+    }
+
+    BackHandler(enabled = editorOpen || drawerOpen || testMode) {
+        when {
+            editorOpen -> closeEditor()
+            drawerOpen -> drawerOpen = false
+            else -> closeTest()
+        }
     }
 
     BoxWithConstraints(modifier.fillMaxSize().testTag("home")) {
@@ -157,60 +185,103 @@ fun HomeScreen(
                         alpha = 1f - editorProgress
                     },
                 ) { HomeHeader() }
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(bottom = 28.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.presets),
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = (-0.3).sp,
-                        color = MaterialTheme.colorScheme.onBackground,
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp)
-                            .graphicsLayer { alpha = 1f - editorProgress }
-                            .testTag("presets_label"),
-                    )
-                    CardStack(
-                        presets = presets,
-                        editorProgress = { editorProgress },
-                        editingId = { if (editorProgress > 0f) anchor?.presetId else null },
-                        initialIndex = selectedIndex,
-                        onIndexChanged = {
-                            selectedIndex = it
-                            preferences.saveSelectedCard(it)
-                        },
-                        onRemove = { flying.add(it) },
-                        onRemoveCommitted = { id ->
-                            persist(presets.filterNot { it.id == id })
-                            if (activeId == id) {
-                                val fallback = presets.firstOrNull { it.id != id }?.id ?: 1
-                                activeId = fallback
-                                preferences.saveActivePresetId(fallback)
+                            .verticalScroll(rememberScrollState(), enabled = !testMode)
+                            .padding(bottom = 28.dp),
+                    ) {
+                        // The presets group lifts away as a unit. Its own blocker
+                        // travels with it, so it can never cover the tester that
+                        // slides up into the vacated space.
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .onSizeChanged { presetsHeightPx = it.height.toFloat() }
+                                .graphicsLayer {
+                                    translationY = -presetsHeightPx * 0.22f * testProgress
+                                    alpha = (1f - testProgress * 1.35f).coerceIn(0f, 1f) * (1f - editorProgress)
+                                },
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = stringResource(R.string.presets),
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    letterSpacing = (-0.3).sp,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp)
+                                        .testTag("presets_label"),
+                                )
+                                CardStack(
+                                    presets = presets,
+                                    editorProgress = { editorProgress },
+                                    editingId = { if (editorProgress > 0f) anchor?.presetId else null },
+                                    initialIndex = selectedIndex,
+                                    onIndexChanged = {
+                                        selectedIndex = it
+                                        preferences.saveSelectedCard(it)
+                                    },
+                                    onRemove = { flying.add(it) },
+                                    onRemoveCommitted = { id ->
+                                        persist(presets.filterNot { it.id == id })
+                                        if (activeId == id) {
+                                            val fallback = presets.firstOrNull { it.id != id }?.id ?: 1
+                                            activeId = fallback
+                                            preferences.saveActivePresetId(fallback)
+                                        }
+                                    },
+                                    onAdd = {
+                                        val fresh = KeyboardPreset(
+                                            id = nextId,
+                                            name = "",
+                                            details = "",
+                                            palette = KeyboardPalettes.forTheme(darkTheme),
+                                            placeholder = true,
+                                        )
+                                        nextId += 1
+                                        preferences.saveNextPresetId(nextId)
+                                        persist(presets + fresh)
+                                    },
+                                    onOpen = {
+                                        anchor = it
+                                        editorOpen = true
+                                    },
+                                    onLiveDrag = { liveDrag = it },
+                                )
                             }
-                        },
-                        onAdd = {
-                            val fresh = KeyboardPreset(
-                                id = nextId,
-                                name = "",
-                                details = "",
-                                palette = KeyboardPalettes.forTheme(darkTheme),
-                                placeholder = true,
-                            )
-                            nextId += 1
-                            preferences.saveNextPresetId(nextId)
-                            persist(presets + fresh)
-                        },
-                        onOpen = {
-                            anchor = it
-                            editorOpen = true
-                        },
-                    )
+                            if (testProgress > 0.5f) {
+                                Box(
+                                    Modifier
+                                        .matchParentSize()
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {},
+                                        ),
+                                )
+                            }
+                        }
+                        KeyboardTester(
+                            focusRequester = testFocus,
+                            active = testMode,
+                            onActivate = {
+                                testMode = true
+                                keyboard?.show()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 20.dp, end = 20.dp, top = 18.dp)
+                                .graphicsLayer {
+                                    // Slides up into the space the presets vacated,
+                                    // landing just under the header.
+                                    translationY = -presetsHeightPx * testProgress
+                                },
+                        )
+                    }
                 }
             }
         }
@@ -256,13 +327,6 @@ fun HomeScreen(
                     persist(
                         presets.map {
                             if (it.id == editingPreset.id) it.copy(name = value, placeholder = false) else it
-                        },
-                    )
-                },
-                onDetails = { value ->
-                    persist(
-                        presets.map {
-                            if (it.id == editingPreset.id) it.copy(details = value, placeholder = false) else it
                         },
                     )
                 },
@@ -322,7 +386,20 @@ fun HomeScreen(
                         .windowInsetsPadding(WindowInsets.safeDrawing)
                         .padding(top = MenuTop + ControlHeight + 14.dp),
                 ) {
-                    AppearanceDrawer(settings, darkTheme, onSettingsChange)
+                    AppearanceDrawer(
+                        settings = settings,
+                        darkTheme = darkTheme,
+                        onChange = onSettingsChange,
+                        onResetKeyboards = {
+                            val defaults = KeyboardPalettes.defaults
+                            val mine = presets.filter { p -> defaults.none { it.id == p.id } }
+                            persist(defaults + mine)
+                            if (presets.none { it.id == activeId } && activeId !in defaults.map { it.id }) {
+                                activeId = defaults.first().id
+                                preferences.saveActivePresetId(defaults.first().id)
+                            }
+                        },
+                    )
                 }
                 Box(
                     modifier = Modifier
@@ -340,6 +417,13 @@ fun HomeScreen(
                         modifier = Modifier.graphicsLayer { alpha = drawerProgress },
                     )
                 }
+            }
+        }
+
+        // The card under the finger travels over the header while still held.
+        if (liveDrag != null) {
+            Box(Modifier.fillMaxSize().zIndex(49f)) {
+                LiveDragLayer(requireNotNull(liveDrag))
             }
         }
 

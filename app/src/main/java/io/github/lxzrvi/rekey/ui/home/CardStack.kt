@@ -116,6 +116,23 @@ class FlyingCard(
     val rotation: Float,
 )
 
+/**
+ * The card while a finger is still on it. The stack lives inside a scrolling
+ * column that clips at the header, so an upward drag is handed to a root-level
+ * overlay that tracks the finger past the header instead of being cut off.
+ */
+@Stable
+class LiveDrag(
+    val preset: KeyboardPreset,
+    val layoutNumber: Int,
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val hPx: Float,
+    val offsetY: () -> Float,
+)
+
 /** Geometry captured when a card is tapped, so the editor can grow out of it. */
 @Stable
 class CardAnchor(
@@ -127,8 +144,9 @@ class CardAnchor(
 )
 
 @Stable
-private class CardState(val id: Int, val animateIn: Boolean = true) {
+private class CardState(val id: Int, var animateIn: Boolean = true) {
     var removing by mutableStateOf(false)
+    var dragging by mutableStateOf(false)
     var gone by mutableStateOf(false)
     var frozenIndex = 0
     var offsetY by mutableFloatStateOf(0f)
@@ -157,6 +175,7 @@ fun CardStack(
     onRemoveCommitted: (Int) -> Unit,
     onAdd: () -> Unit,
     onOpen: (CardAnchor) -> Unit,
+    onLiveDrag: (LiveDrag?) -> Unit = {},
     initialIndex: Int = 0,
     onIndexChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -257,12 +276,16 @@ fun CardStack(
                 val item = stateFor(p)
                 if (item.removing) return@rememberDraggableState
                 item.returnJob?.cancel()
-                // Downward travel is rubber-banded: it can never reach a
-                // dismissal threshold, it only stretches.
-                item.offsetY = if (item.offsetY + delta > 0f) {
-                    (item.offsetY + delta * 0.4f).coerceAtMost(hPx * 0.5f)
+                // Pulling down moves the whole card, it never deforms it. The
+                // resistance grows with distance so it feels progressively
+                // heavier, and it can never reach a dismissal threshold.
+                val next = item.offsetY + delta
+                item.offsetY = if (next > 0f) {
+                    val limit = hPx * 0.42f
+                    val t = (next / limit).coerceAtLeast(0f)
+                    (limit * (1f - 1f / (1f + t * 1.6f))).coerceAtMost(limit)
                 } else {
-                    item.offsetY + delta
+                    next
                 }
             }
 
@@ -283,6 +306,28 @@ fun CardStack(
                     .draggable(
                         state = verticalDrag,
                         orientation = Orientation.Vertical,
+                        onDragStarted = {
+                            val p = live().getOrNull(target)
+                            if (p != null) {
+                                val item = stateFor(p)
+                                if (!item.removing) {
+                                    item.returnJob?.cancel()
+                                    item.dragging = true
+                                    onLiveDrag(
+                                        LiveDrag(
+                                            preset = p,
+                                            layoutNumber = (presets.indexOfFirst { it.id == p.id } + 1).coerceAtLeast(1),
+                                            left = item.bounds.left,
+                                            top = item.bounds.top - item.offsetY,
+                                            width = item.layoutW.takeIf { it > 0f } ?: item.bounds.width,
+                                            height = item.layoutH.takeIf { it > 0f } ?: item.bounds.height,
+                                            hPx = hPx,
+                                            offsetY = { item.offsetY },
+                                        ),
+                                    )
+                                }
+                            }
+                        },
                         onDragStopped = { velocity ->
                             val p = live().getOrNull(target)
                             if (p != null) {
@@ -292,6 +337,8 @@ fun CardStack(
                                     val far = -item.offsetY > hPx * 0.26f
                                     val fast = velocity < -900f && -item.offsetY > hPx * 0.05f
                                     if (up && (far || fast)) {
+                                        item.dragging = false
+                                        onLiveDrag(null)
                                         removePreset(p)
                                     } else {
                                         item.returnJob = scope.launch {
@@ -301,6 +348,10 @@ fun CardStack(
                                                 initialVelocity = velocity,
                                                 animationSpec = ReturnSpring,
                                             ) { value, _ -> item.offsetY = value }
+                                            // Hand the card back to the stack only
+                                            // once it is genuinely home again.
+                                            item.dragging = false
+                                            onLiveDrag(null)
                                         }
                                     }
                                 }
@@ -335,6 +386,8 @@ fun CardStack(
                                 w = cardW,
                                 h = cardH,
                                 animateIn = item.animateIn,
+                                onEntered = { item.animateIn = false },
+                                lifted = { item.dragging },
                                 offsetY = { item.offsetY },
                                 slideOut = side * ep,
                                 onBounds = { rect, w, h ->
@@ -380,6 +433,8 @@ fun CardStack(
                         w = cardW,
                         h = cardH,
                         animateIn = false,
+                        onEntered = {},
+                        lifted = { false },
                         offsetY = { 0f },
                         slideOut = if (editId == null) 0f else ep,
                         onBounds = { _, _, _ -> },
@@ -447,6 +502,8 @@ private fun StackCard(
     w: Dp,
     h: Dp,
     animateIn: Boolean,
+    onEntered: () -> Unit,
+    lifted: () -> Boolean,
     offsetY: () -> Float,
     slideOut: Float,
     onBounds: (Rect, Float, Float) -> Unit,
@@ -461,6 +518,7 @@ private fun StackCard(
     val appear = remember { Animatable(if (animateIn) 0f else 1f) }
     LaunchedEffect(Unit) {
         if (animateIn) appear.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = 200f)) else appear.snapTo(1f)
+        onEntered()
     }
     val entering by remember { derivedStateOf { appear.value < 0.98f } }
     val z by remember { derivedStateOf { 1000 - (abs(slot.value - pos()) * 20f).roundToInt() } }
@@ -483,17 +541,19 @@ private fun StackCard(
 
                 val ap = appear.value
                 val drag = offsetY()
-                val down = (drag / hPx).coerceIn(0f, 0.5f)
-                translationY = (1f - ap) * hPx * 0.5f + if (drag > 0f) drag * 0.45f else drag
+                translationY = (1f - ap) * hPx * 0.5f + drag
                 rotationZ = if (drag > 0f) 0f else (drag / hPx).coerceIn(-1f, 1f) * 3f
 
                 val beyond = ((a - 1f) / 0.3f).coerceIn(0f, 1f)
                 val visibility = 1f - beyond * beyond * (3f - 2f * beyond)
                 val sc = (0.7f + 0.3f * exp(-a * a * 0.35f)) * (0.86f + 0.14f * ap)
-                scaleX = sc * (1f - down * 0.10f)
-                // Pulling down stretches the card instead of moving it away.
-                scaleY = sc * (1f + down * 0.34f)
-                alpha = visibility * (ap * 1.8f).coerceIn(0f, 1f) * (1f - abs(slideOut)).coerceIn(0f, 1f)
+                // The card keeps its shape at all times — no stretch on pull-down.
+                scaleX = sc
+                scaleY = sc
+                alpha = visibility * (ap * 1.8f).coerceIn(0f, 1f) *
+                    (1f - abs(slideOut)).coerceIn(0f, 1f) *
+                    // While the root overlay owns the drag, this copy stays hidden.
+                    (if (lifted()) 0f else 1f)
             }
             .onGloballyPositioned { coords ->
                 val origin = coords.positionInRoot()
@@ -560,15 +620,15 @@ fun PresetCardFace(
                 .fillMaxWidth()
                 .height(stripH)
                 .clip(RoundedCornerShape(11.dp))
-                .liveBlur(faceBlur, fullScreenBlur(18.dp))
-                .background(preset.palette.canvas.copy(alpha = 0.30f))
+                .liveBlur(faceBlur, fullScreenBlur(22.dp))
+                .background(preset.palette.canvas.copy(alpha = 0.78f))
                 .padding(horizontal = 10.dp, vertical = 2.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             Column {
                 Text(
                     text = stringResource(R.string.card_layout_label, layoutNumber),
-                    color = preset.palette.text.copy(alpha = 0.6f),
+                    color = preset.palette.text.copy(alpha = 0.85f),
                     fontSize = 9.sp,
                     lineHeight = 11.sp,
                     fontWeight = FontWeight.Medium,
@@ -585,14 +645,21 @@ fun PresetCardFace(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = if (preset.placeholder) stringResource(R.string.editor_tap_to_edit) else preset.details,
-                    color = preset.palette.text.copy(alpha = 0.62f),
-                    fontSize = 9.5.sp,
-                    lineHeight = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val detailLine = if (preset.placeholder) {
+                    stringResource(R.string.editor_tap_to_edit)
+                } else {
+                    preset.details
+                }
+                if (detailLine.isNotBlank()) {
+                    Text(
+                        text = detailLine,
+                        color = preset.palette.text.copy(alpha = 0.92f),
+                        fontSize = 9.5.sp,
+                        lineHeight = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         if (onRemove != null) {
@@ -638,6 +705,39 @@ private fun FrostedCross(
         contentAlignment = Alignment.Center,
     ) {
         RekeyGlyph(Glyph.CROSS, tint, Modifier.size(15.dp))
+    }
+}
+
+/**
+ * The card under the finger, drawn at root level so an upward drag is visible
+ * over the header while it is still happening. It reads the same offset the
+ * stack uses, so there is no jump when the drag ends: either the flight takes
+ * over from this exact position, or the card springs home and the stack copy
+ * fades back in.
+ */
+@Composable
+fun LiveDragLayer(drag: LiveDrag) {
+    val density = LocalDensity.current
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .offset {
+                    IntOffset(drag.left.roundToInt(), (drag.top + drag.offsetY()).roundToInt())
+                }
+                .size(
+                    with(density) { drag.width.toDp() },
+                    with(density) { drag.height.toDp() },
+                )
+                .graphicsLayer {
+                    val d = drag.offsetY()
+                    rotationZ = if (d > 0f) 0f else (d / drag.hPx).coerceIn(-1f, 1f) * 3f
+                }
+                .clip(CardShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), CardShape),
+        ) {
+            PresetCardFace(drag.preset, drag.layoutNumber, onRemove = null)
+        }
     }
 }
 

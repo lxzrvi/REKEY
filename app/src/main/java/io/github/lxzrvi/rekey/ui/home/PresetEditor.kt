@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -74,7 +75,6 @@ fun PresetEditor(
     inUse: Boolean,
     onBack: () -> Unit,
     onRename: (String) -> Unit,
-    onDetails: (String) -> Unit,
     onUse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -120,11 +120,18 @@ fun PresetEditor(
             )
         }
 
-        // The travelling card.
+        // The travelling card. It is laid out once at its final size and only
+        // transformed during the flight, so the keyboard inside it never
+        // remeasures mid-animation — that is what makes open and back smooth.
         Box(
             Modifier
                 .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
-                .size(with(density) { w.toDp() }, with(density) { h.toDp() })
+                .graphicsLayer {
+                    scaleX = if (endW > 0f) w / endW else 1f
+                    scaleY = if (endH > 0f) h / endH else 1f
+                    transformOrigin = TransformOrigin(0f, 0f)
+                }
+                .size(with(density) { endW.toDp() }, with(density) { endH.toDp() })
                 .clip(EditorShape)
                 .background(MaterialTheme.colorScheme.surface)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), EditorShape),
@@ -160,15 +167,6 @@ fun PresetEditor(
                     bold = true,
                     onValueChange = onRename,
                     modifier = Modifier.testTag("editor_name"),
-                )
-                EditableField(
-                    label = stringResource(R.string.editor_details_label),
-                    value = if (preset.placeholder) "" else preset.details,
-                    placeholder = stringResource(R.string.editor_tap_to_edit),
-                    fontSize = 13,
-                    bold = false,
-                    onValueChange = onDetails,
-                    modifier = Modifier.testTag("editor_details"),
                 )
                 Spacer(Modifier.height(2.dp))
                 Button(

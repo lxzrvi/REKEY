@@ -51,10 +51,12 @@ fun AppearanceDrawer(
     settings: AppearanceSettings,
     darkTheme: Boolean,
     onChange: (AppearanceSettings) -> Unit,
+    onResetKeyboards: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Custom starts closed. Tapping Custom opens the hex box; Apply closes it again.
     var hexOpen by rememberSaveable { mutableStateOf(false) }
+    var resetDone by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -120,6 +122,30 @@ fun AppearanceDrawer(
                     hexOpen = false
                 },
             )
+        }
+
+        SectionLabel(stringResource(R.string.reset_keyboards))
+        Surface(
+            onClick = {
+                onResetKeyboards()
+                resetDone = true
+            },
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth().height(OptionHeight).testTag("reset_keyboards"),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = stringResource(
+                        if (resetDone) R.string.reset_keyboards_done else R.string.reset_keyboards,
+                    ),
+                    style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }

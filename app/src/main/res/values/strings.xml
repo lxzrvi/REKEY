@@ -39,11 +39,13 @@
     <string name="editor_title">Preset</string>
     <string name="editor_back">Back to presets</string>
     <string name="editor_name_label">Layout name</string>
-    <string name="editor_details_label">Details</string>
     <string name="editor_unnamed">No name</string>
     <string name="editor_tap_to_edit">Tap to edit</string>
     <string name="editor_use_layout">Use this layout</string>
     <string name="editor_in_use">In use</string>
+    <string name="reset_keyboards">Reset keyboards</string>
+    <string name="reset_keyboards_done">Default layouts restored</string>
+    <string name="test_keyboard_hint">Test your keyboard</string>
     <string name="ime_name">REKEY</string>
     <string name="ime_subtype">English (US)</string>
 </resources>

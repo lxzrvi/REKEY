@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +57,7 @@ import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.components.RekeyWordmark
 import io.github.lxzrvi.rekey.ui.home.SquigglePattern
+import kotlinx.coroutines.delay
 
 /**
  * First-run flow, built from the same squiggle background, cards and buttons as
@@ -92,6 +94,15 @@ fun SetupScreen(
             !enabled -> 0
             !selected -> 1
             else -> 2
+        }
+    }
+
+    // Picking REKEY in the picker is the last step: continue on its own, with a
+    // beat long enough for the second tick to be seen.
+    LaunchedEffect(step) {
+        if (step == 2) {
+            delay(420)
+            onFinished()
         }
     }
 

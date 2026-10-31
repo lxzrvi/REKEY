@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 enum class Glyph {
     CROSS, PLUS, BACK, CHECK, CHEVRON_DOWN,
     PASTE, TRANSLATE, PALETTE, MORE,
-    SHIFT, BACKSPACE, GLOBE, ENTER,
+    SHIFT, BACKSPACE, GLOBE, ENTER, KEYBOARD_TEXT,
 }
 
 @Composable
@@ -36,6 +36,19 @@ fun RekeyGlyph(
         val stroke = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
         fun p(x: Float, y: Float) = Offset(x * s, y * s)
         when (glyph) {
+            Glyph.KEYBOARD_TEXT -> {
+                drawRoundRect(
+                    color = color,
+                    topLeft = p(2.5f, 5.5f),
+                    size = Size(19f * s, 13f * s),
+                    cornerRadius = CornerRadius(2.5f * s, 2.5f * s),
+                    style = stroke,
+                )
+                listOf(7f, 11f, 15f).forEach { x ->
+                    drawLine(color, p(x, 9.5f), p(x + 1.6f, 9.5f), sw, StrokeCap.Round)
+                }
+                drawLine(color, p(8f, 14.5f), p(16f, 14.5f), sw, StrokeCap.Round)
+            }
             Glyph.CROSS -> {
                 drawLine(color, p(6.5f, 6.5f), p(17.5f, 17.5f), sw, StrokeCap.Round)
                 drawLine(color, p(17.5f, 6.5f), p(6.5f, 17.5f), sw, StrokeCap.Round)
