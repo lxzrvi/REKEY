@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -50,7 +49,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.github.lxzrvi.rekey.R
-import io.github.lxzrvi.rekey.data.KeyboardPalettes
 import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.design.PatternContract
 import io.github.lxzrvi.rekey.ime.RekeyImeService
@@ -58,8 +56,6 @@ import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.components.RekeyWordmark
 import io.github.lxzrvi.rekey.ui.home.SquigglePattern
-import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
-import io.github.lxzrvi.rekey.ui.keyboard.KeyboardPreview
 
 /**
  * First-run flow, built from the same squiggle background, cards and buttons as
@@ -139,21 +135,6 @@ fun SetupScreen(
                 lineHeight = 19.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(GlassContract.CORNER_DP.dp))
-                    .background(KeyboardPalettes.forTheme(darkTheme).canvas),
-            ) {
-                KeyboardPreview(
-                    palette = KeyboardPalettes.forTheme(darkTheme),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(KeyboardCanvas.RATIO),
-                    cornerRadius = GlassContract.CORNER_DP.dp,
-                )
-            }
 
             SetupStep(
                 index = 1,

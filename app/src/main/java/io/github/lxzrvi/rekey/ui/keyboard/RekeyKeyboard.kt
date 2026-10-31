@@ -2,6 +2,8 @@ package io.github.lxzrvi.rekey.ui.keyboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -19,17 +21,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,20 +45,36 @@ import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 
 /**
- * The keyboard is authored once on a fixed 440 x 266 dp canvas so a preset card
- * and the real input method render exactly the same geometry. Cards scale the
- * whole canvas down; the input method scales it to the device width.
+ * The keyboard is authored once on a fixed-width canvas so a preset card and the
+ * real input method draw exactly the same geometry.
+ *
+ * The key board is always 204 dp tall. Only the strip above it changes: the IME
+ * shows its toolbar there, a preset card leaves it empty and floats its own
+ * frosted "Layout N" / X controls over it. That is what lets the card *be* the
+ * keyboard instead of holding a small picture of one.
  */
 object KeyboardCanvas {
     val WIDTH: Dp = 440.dp
+
+    /** Toolbar strip (IME) + board + outer padding. */
     val HEIGHT: Dp = 266.dp
+
+    /** Taller strip (preset card) + the same board + outer padding. */
+    val CARD_HEIGHT: Dp = 298.dp
+
     const val RATIO = 440f / 266f
+    const val CARD_RATIO = 440f / 298f
+
+    /** Outer canvas padding, shared with the card header placement. */
+    const val OUTER = 7f
 }
 
-private val Outer = 7.dp
-private val BarHeight = 40.dp
+private val Outer = KeyboardCanvas.OUTER.dp
+private val BoardHeight = 204.dp
 private val Gap = 8.dp
 private val KeyRadius = 7.dp
+val ImeToolbarHeight: Dp = 40.dp
+val CardHeaderHeight: Dp = 72.dp
 
 private val Letters1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
 private val Letters2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l")
@@ -60,38 +83,54 @@ private val Symbols1 = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
 private val Symbols2 = listOf("-", "/", ":", ";", "(", ")", "$", "&", "@")
 private val Symbols3 = listOf(".", ",", "?", "!", "'", "\"", "+")
 
-/** What the editor and the input method need to know about a tap. */
+/** What the input method needs to know about a tap. */
 enum class KeyAction { TEXT, SPACE, ENTER, BACKSPACE, LANGUAGE }
 
 /**
- * The full REKEY keyboard: toolbar, three letter rows and the bottom row.
+ * The full REKEY keyboard.
  *
- * [onKey] defaults to a no-op so the same composable doubles as a static
- * preview inside a preset card.
+ * [showToolbar] false leaves the top strip empty so a caller can overlay its own
+ * controls; [interactive] false disables taps and haptics for a static preview.
  */
 @Composable
 fun RekeyKeyboard(
     palette: KeyboardPalette,
     modifier: Modifier = Modifier,
+    showToolbar: Boolean = true,
+    headerHeight: Dp = ImeToolbarHeight,
+    interactive: Boolean = true,
     onKey: (KeyAction, String) -> Unit = { _, _ -> },
 ) {
-    var shifted by remember { mutableStateOf(false) }
-    var symbols by remember { mutableStateOf(false) }
+    var shifted by rememberSaveable { mutableStateOf(false) }
+    var symbols by rememberSaveable { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+
+    fun emit(action: KeyAction, text: String) {
+        if (!interactive) return
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onKey(action, text)
+        // A shifted letter types once, then drops back — like a real keyboard.
+        if (action == KeyAction.TEXT && shifted && !symbols) shifted = false
+    }
 
     fun face(ch: String) = if (shifted && !symbols) ch.uppercase() else ch
 
     Column(
         modifier = modifier
-            .requiredSize(KeyboardCanvas.WIDTH, KeyboardCanvas.HEIGHT)
+            .requiredSize(KeyboardCanvas.WIDTH, headerHeight + Gap + BoardHeight + Outer * 2)
             .background(palette.canvas)
             .padding(Outer),
         verticalArrangement = Arrangement.spacedBy(Gap),
     ) {
-        KeyboardToolbar(palette)
+        if (showToolbar) {
+            KeyboardToolbar(palette, headerHeight)
+        } else {
+            Box(Modifier.fillMaxWidth().height(headerHeight))
+        }
         Box(
             Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .height(BoardHeight)
                 .clip(RoundedCornerShape(12.dp))
                 .background(palette.board)
                 .padding(horizontal = 6.dp, vertical = 7.dp),
@@ -99,27 +138,27 @@ fun RekeyKeyboard(
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 KeyRow {
                     (if (symbols) Symbols1 else Letters1).forEach { ch ->
-                        LetterKey(face(ch), palette, Modifier.weight(1f)) {
-                            onKey(KeyAction.TEXT, face(ch))
+                        LetterKey(face(ch), palette, Modifier.weight(1f), interactive) {
+                            emit(KeyAction.TEXT, face(ch))
                         }
                     }
                 }
                 KeyRow {
                     Box(Modifier.weight(0.5f))
                     (if (symbols) Symbols2 else Letters2).forEach { ch ->
-                        LetterKey(face(ch), palette, Modifier.weight(1f)) {
-                            onKey(KeyAction.TEXT, face(ch))
+                        LetterKey(face(ch), palette, Modifier.weight(1f), interactive) {
+                            emit(KeyAction.TEXT, face(ch))
                         }
                     }
                     Box(Modifier.weight(0.5f))
                 }
                 KeyRow {
-                    SpecialKey(
-                        palette = palette,
-                        modifier = Modifier.weight(1.45f),
-                        active = shifted,
-                        onClick = { shifted = !shifted },
-                    ) {
+                    SpecialKey(palette, Modifier.weight(1.45f), interactive, active = shifted, onClick = {
+                        if (interactive) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            shifted = !shifted
+                        }
+                    }) {
                         RekeyGlyph(
                             glyph = Glyph.SHIFT,
                             color = if (shifted) palette.enter else palette.text,
@@ -127,24 +166,24 @@ fun RekeyKeyboard(
                         )
                     }
                     (if (symbols) Symbols3 else Letters3).forEach { ch ->
-                        LetterKey(face(ch), palette, Modifier.weight(1f)) {
-                            onKey(KeyAction.TEXT, face(ch))
+                        LetterKey(face(ch), palette, Modifier.weight(1f), interactive) {
+                            emit(KeyAction.TEXT, face(ch))
                         }
                     }
-                    SpecialKey(
-                        palette = palette,
-                        modifier = Modifier.weight(1.45f),
-                        onClick = { onKey(KeyAction.BACKSPACE, "") },
-                    ) {
+                    SpecialKey(palette, Modifier.weight(1.45f), interactive, onClick = {
+                        emit(KeyAction.BACKSPACE, "")
+                    }) {
                         RekeyGlyph(Glyph.BACKSPACE, palette.text, Modifier.size(19.dp))
                     }
                 }
                 KeyRow {
-                    SpecialKey(
-                        palette = palette,
-                        modifier = Modifier.weight(1.45f),
-                        onClick = { symbols = !symbols; shifted = false },
-                    ) {
+                    SpecialKey(palette, Modifier.weight(1.45f), interactive, onClick = {
+                        if (interactive) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            symbols = !symbols
+                            shifted = false
+                        }
+                    }) {
                         Text(
                             text = if (symbols) "ABC" else "?123",
                             color = palette.text,
@@ -152,33 +191,15 @@ fun RekeyKeyboard(
                             fontWeight = FontWeight.Medium,
                         )
                     }
-                    SpecialKey(
-                        palette = palette,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onKey(KeyAction.LANGUAGE, "") },
-                    ) {
+                    SpecialKey(palette, Modifier.weight(1f), interactive, onClick = {
+                        emit(KeyAction.LANGUAGE, "")
+                    }) {
                         RekeyGlyph(Glyph.GLOBE, palette.text, Modifier.size(18.dp))
                     }
-                    Box(
-                        Modifier
-                            .weight(4.6f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(KeyRadius))
-                            .background(palette.key)
-                            .clickableKey { onKey(KeyAction.SPACE, " ") },
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    WideKey(palette.key, Modifier.weight(4.6f), interactive, { emit(KeyAction.SPACE, " ") }) {
                         Text("space", color = palette.text.copy(alpha = 0.55f), fontSize = 12.sp)
                     }
-                    Box(
-                        Modifier
-                            .weight(2.1f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(KeyRadius))
-                            .background(palette.enter)
-                            .clickableKey { onKey(KeyAction.ENTER, "\n") },
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    WideKey(palette.enter, Modifier.weight(2.1f), interactive, { emit(KeyAction.ENTER, "\n") }) {
                         RekeyGlyph(Glyph.ENTER, palette.enterText, Modifier.size(19.dp))
                     }
                 }
@@ -188,9 +209,9 @@ fun RekeyKeyboard(
 }
 
 @Composable
-private fun KeyboardToolbar(palette: KeyboardPalette) {
+private fun KeyboardToolbar(palette: KeyboardPalette, height: Dp) {
     Row(
-        Modifier.fillMaxWidth().height(BarHeight).padding(horizontal = 8.dp),
+        Modifier.fillMaxWidth().height(height).padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
@@ -218,16 +239,10 @@ private fun LetterKey(
     label: String,
     palette: KeyboardPalette,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
     onClick: () -> Unit,
 ) {
-    Box(
-        modifier
-            .fillMaxHeight()
-            .clip(RoundedCornerShape(KeyRadius))
-            .background(palette.key)
-            .clickableKey(onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    WideKey(palette.key, modifier, interactive, onClick) {
         Text(
             text = label,
             color = palette.text,
@@ -242,51 +257,77 @@ private fun LetterKey(
 private fun SpecialKey(
     palette: KeyboardPalette,
     modifier: Modifier = Modifier,
+    interactive: Boolean = true,
     active: Boolean = false,
     onClick: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Box(
-        modifier
-            .fillMaxHeight()
-            .clip(RoundedCornerShape(KeyRadius))
-            .background(if (active) palette.key else palette.special)
-            .clickableKey(onClick),
-        contentAlignment = Alignment.Center,
-    ) { content() }
+    WideKey(if (active) palette.key else palette.special, modifier, interactive, onClick, content)
 }
 
-/** Keys react to taps but never show a ripple: the preview must stay flat. */
-private fun Modifier.clickableKey(onClick: () -> Unit): Modifier =
-    clickable(interactionSource = null, indication = null, onClick = onClick)
+/** One key surface: pressed state darkens it, previews stay completely inert. */
+@Composable
+private fun WideKey(
+    background: Color,
+    modifier: Modifier = Modifier,
+    interactive: Boolean = true,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val shape = RoundedCornerShape(KeyRadius)
+    if (interactive) {
+        val src = remember { MutableInteractionSource() }
+        val pressed by src.collectIsPressedAsState()
+        Box(
+            modifier
+                .fillMaxHeight()
+                .clip(shape)
+                .background(if (pressed) background.copy(alpha = 0.72f) else background)
+                .clickable(interactionSource = src, indication = null, onClick = onClick),
+            contentAlignment = Alignment.Center,
+            content = { content() },
+        )
+    } else {
+        Box(
+            modifier.fillMaxHeight().clip(shape).background(background),
+            contentAlignment = Alignment.Center,
+            content = { content() },
+        )
+    }
+}
 
 /**
- * Scales the fixed keyboard canvas down to whatever width the caller gives it.
- * Used by preset cards, the editor and the setup screen.
+ * Draws the keyboard edge-to-edge at whatever width it is given.
+ *
+ * The canvas is authored at 440 dp. Instead of drawing it oversized and scaling
+ * the render layer — which leaves the layout box wider than the pixels and makes
+ * the keyboard drift sideways — this scales the *density*. The keyboard then
+ * measures exactly [KeyboardCanvas.WIDTH] logical dp, which is exactly the
+ * available physical width, so its left and right edges land on the container's
+ * edges by construction. Text stays vector-crisp and no extra layer is allocated.
  */
 @Composable
-fun KeyboardPreview(
+fun ScaledKeyboard(
     palette: KeyboardPalette,
     modifier: Modifier = Modifier,
-    cornerRadius: Dp = 10.dp,
+    showToolbar: Boolean = true,
+    headerHeight: Dp = ImeToolbarHeight,
+    interactive: Boolean = true,
+    onKey: (KeyAction, String) -> Unit = { _, _ -> },
 ) {
-    BoxWithConstraints(modifier.clip(RoundedCornerShape(cornerRadius))) {
+    BoxWithConstraints(modifier) {
+        val base = LocalDensity.current
         val scale = maxWidth.value / KeyboardCanvas.WIDTH.value
-        Box(
-            Modifier.fillMaxSize().background(palette.canvas),
-            contentAlignment = Alignment.TopStart,
+        CompositionLocalProvider(
+            LocalDensity provides Density(base.density * scale, base.fontScale),
         ) {
-            Box(
-                Modifier
-                    .requiredSize(KeyboardCanvas.WIDTH, KeyboardCanvas.HEIGHT)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                        transformOrigin = TransformOrigin(0f, 0f)
-                    },
-            ) {
-                RekeyKeyboard(palette = palette)
-            }
+            RekeyKeyboard(
+                palette = palette,
+                showToolbar = showToolbar,
+                headerHeight = headerHeight,
+                interactive = interactive,
+                onKey = onKey,
+            )
         }
     }
 }

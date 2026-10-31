@@ -24,8 +24,13 @@ fun SquigglePattern(
 ) {
     val background = if (darkTheme) Color.Black else Color.White
     val strokeColor = (if (darkTheme) Color.White else Color.Black).copy(alpha = strokeAlpha)
-    val curvePaths = remember { SquiggleData.CURVES.map { buildSquigglePath(it, smooth = true) } }
-    val zigzagPaths = remember { SquiggleData.ZIGZAGS.map { buildSquigglePath(it, smooth = false) } }
+    // One combined path per style: the whole pattern is 2 draw calls, not 106.
+    val curvePath = remember {
+        Path().apply { SquiggleData.CURVES.forEach { addPath(buildSquigglePath(it, smooth = true)) } }
+    }
+    val zigzagPath = remember {
+        Path().apply { SquiggleData.ZIGZAGS.forEach { addPath(buildSquigglePath(it, smooth = false)) } }
+    }
     val curveStyle = remember { Stroke(SQUIGGLE_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Round) }
     val zigzagStyle = remember { Stroke(SQUIGGLE_STROKE, cap = StrokeCap.Round, join = StrokeJoin.Miter, miter = 4f) }
     Canvas(modifier.fillMaxSize()) {
@@ -37,8 +42,8 @@ fun SquigglePattern(
             translate(dx, dy)
             scale(s, s, pivot = Offset.Zero)
         }) {
-            curvePaths.forEach { drawPath(it, strokeColor, style = curveStyle) }
-            zigzagPaths.forEach { drawPath(it, strokeColor, style = zigzagStyle) }
+            drawPath(curvePath, strokeColor, style = curveStyle)
+            drawPath(zigzagPath, strokeColor, style = zigzagStyle)
         }
     }
 }

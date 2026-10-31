@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -77,7 +77,8 @@ import io.github.lxzrvi.rekey.ui.blur.rememberLiveBlurState
 import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
-import io.github.lxzrvi.rekey.ui.keyboard.KeyboardPreview
+import io.github.lxzrvi.rekey.ui.keyboard.CardHeaderHeight
+import io.github.lxzrvi.rekey.ui.keyboard.ScaledKeyboard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -237,7 +238,7 @@ fun CardStack(
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         BoxWithConstraints(Modifier.fillMaxWidth().zIndex(2f).testTag("card_stack")) {
             val cardW = minOf(maxWidth * 0.86f, 420.dp)
-            val cardH = cardW * 0.74f
+            val cardH = cardW / KeyboardCanvas.CARD_RATIO
             val density = LocalDensity.current
             val wPx = with(density) { cardW.toPx() }
             val hPx = with(density) { cardH.toPx() }
@@ -463,6 +464,10 @@ private fun StackCard(
     }
     val entering by remember { derivedStateOf { appear.value < 0.98f } }
     val z by remember { derivedStateOf { 1000 - (abs(slot.value - pos()) * 20f).roundToInt() } }
+    // A card carries a full keyboard. Composing all of them costs far more than
+    // the two neighbours the user can actually see, so gate the content on
+    // distance and only recompose when that boolean flips.
+    val showContent by remember { derivedStateOf { abs(slot.value - pos()) < 1.45f } }
 
     Box(
         Modifier
@@ -506,12 +511,15 @@ private fun StackCard(
                 indication = null,
                 onClick = onClick,
             ),
-    ) { content() }
+    ) { if (showContent) content() }
 }
 
 /**
- * The card face: "Layout N", a frosted X, a real keyboard preview, the keyboard
- * name and its details. A brand-new card shows "No name" / "Tap to edit".
+ * The card *is* the keyboard.
+ *
+ * The layout is drawn edge-to-edge with no inner frame, and "Layout N" plus the
+ * frosted X float on top of its header strip. Haze cannot blur an ancestor
+ * source, so the keyboard is the source and both controls are siblings above it.
  */
 @Composable
 fun PresetCardFace(
@@ -520,70 +528,82 @@ fun PresetCardFace(
     onRemove: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    // Haze cannot blur an ancestor source, so the face is the source and the X
-    // is drawn as a sibling on top of it — never inside it.
     val faceBlur = rememberLiveBlurState()
-    Box(modifier.fillMaxSize()) {
+    val shape = RoundedCornerShape(GlassContract.CORNER_DP.dp)
+    BoxWithConstraints(modifier.fillMaxSize().clip(shape)) {
+        // The keyboard canvas is 440 dp wide and scaled to the card. The label
+        // and the X are placed in that same scaled space so they always sit over
+        // the keyboard's toolbar strip, at every card size.
+        val scale = maxWidth.value / KeyboardCanvas.WIDTH.value
+        val stripTop = (KeyboardCanvas.OUTER * scale).dp
+        val stripH = (CardHeaderHeight.value * scale).dp
+        val padH = (14f * scale).dp
+        val closeSize = 30.dp
+
         Box(Modifier.fillMaxSize().liveBlurSource(faceBlur)) {
-            PresetCardContents(preset, layoutNumber, hasClose = onRemove != null)
+            ScaledKeyboard(
+                palette = preset.palette,
+                modifier = Modifier.fillMaxWidth(),
+                showToolbar = true,
+                headerHeight = CardHeaderHeight,
+                interactive = false,
+            )
+        }
+        Box(
+            Modifier
+                .align(Alignment.TopStart)
+                .padding(
+                    start = padH,
+                    end = if (onRemove != null) padH + closeSize + 8.dp else padH,
+                    top = stripTop,
+                )
+                .fillMaxWidth()
+                .height(stripH)
+                .clip(RoundedCornerShape(11.dp))
+                .liveBlur(faceBlur, fullScreenBlur(18.dp))
+                .background(preset.palette.canvas.copy(alpha = 0.30f))
+                .padding(horizontal = 10.dp, vertical = 2.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Column {
+                Text(
+                    text = stringResource(R.string.card_layout_label, layoutNumber),
+                    color = preset.palette.text.copy(alpha = 0.6f),
+                    fontSize = 9.sp,
+                    lineHeight = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    letterSpacing = 0.4.sp,
+                    maxLines = 1,
+                )
+                Text(
+                    text = if (preset.placeholder) stringResource(R.string.editor_unnamed) else preset.name,
+                    color = preset.palette.text,
+                    fontSize = 16.sp,
+                    lineHeight = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.3).sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = if (preset.placeholder) stringResource(R.string.editor_tap_to_edit) else preset.details,
+                    color = preset.palette.text.copy(alpha = 0.62f),
+                    fontSize = 9.5.sp,
+                    lineHeight = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (onRemove != null) {
             FrostedCross(
                 blurState = faceBlur,
+                tint = preset.palette.text,
                 description = stringResource(R.string.remove_card_description, layoutNumber),
                 onClick = onRemove,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 14.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PresetCardContents(
-    preset: KeyboardPreset,
-    layoutNumber: Int,
-    hasClose: Boolean,
-) {
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    Column(
-        Modifier.fillMaxSize().padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(9.dp),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().height(30.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = stringResource(R.string.card_layout_label, layoutNumber),
-                color = onSurface.copy(alpha = 0.7f),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            if (hasClose) Spacer(Modifier.size(30.dp))
-        }
-        KeyboardPreview(
-            palette = preset.palette,
-            modifier = Modifier.fillMaxWidth().aspectRatio(KeyboardCanvas.RATIO),
-            cornerRadius = 10.dp,
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = if (preset.placeholder) stringResource(R.string.editor_unnamed) else preset.name,
-                color = onSurface,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.4).sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (preset.placeholder) stringResource(R.string.editor_tap_to_edit) else preset.details,
-                color = onSurface.copy(alpha = 0.68f),
-                fontSize = 11.sp,
-                lineHeight = 15.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = stripTop + (stripH - closeSize) / 2, end = padH),
             )
         }
     }
@@ -593,6 +613,7 @@ private fun PresetCardContents(
 @Composable
 private fun FrostedCross(
     blurState: HazeState,
+    tint: Color,
     description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -604,7 +625,6 @@ private fun FrostedCross(
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
         label = "xScale",
     )
-    val tint = MaterialTheme.colorScheme.onSurface
     Box(
         modifier
             .size(30.dp)

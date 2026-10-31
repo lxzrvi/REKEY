@@ -12,16 +12,16 @@ android {
         applicationId = "io.github.lxzrvi.rekey"
         minSdk = 31
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.8.0"
+        versionCode = 9
+        versionName = "0.8.1"
         vectorDrawables.useSupportLibrary = true
     }
 
     buildTypes {
         release {
-            // Fast GitHub-only release path: package directly, without R8/resource shrinking.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 strips unused Compose/Haze code and shrinks resources.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -53,7 +53,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel)
-    implementation(libs.androidx.lifecycle.viewmodel.savedstate)
     implementation(libs.androidx.savedstate)
     implementation(libs.haze)
     implementation(libs.haze.blur)

@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.KeyboardPreset
 import io.github.lxzrvi.rekey.design.GlassContract
+import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
 import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import kotlin.math.roundToInt
@@ -90,7 +91,7 @@ fun PresetEditor(
         val endLeft = gutter
         val endTop = topInsetPx + barH + gap
         val endW = screenW - gutter * 2f
-        val endH = endW * 0.74f
+        val endH = endW / KeyboardCanvas.CARD_RATIO
 
         val p = progress
         val left = anchor.left + (endLeft - anchor.left) * p

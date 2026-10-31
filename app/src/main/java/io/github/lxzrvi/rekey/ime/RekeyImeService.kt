@@ -4,19 +4,12 @@ import android.inputmethodservice.InputMethodService
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
@@ -35,8 +28,7 @@ import io.github.lxzrvi.rekey.data.KeyboardPalettes
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.data.ThemeMode
 import io.github.lxzrvi.rekey.ui.keyboard.KeyAction
-import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
-import io.github.lxzrvi.rekey.ui.keyboard.RekeyKeyboard
+import io.github.lxzrvi.rekey.ui.keyboard.ScaledKeyboard
 import io.github.lxzrvi.rekey.ui.theme.RekeyTheme
 
 /**
@@ -93,6 +85,9 @@ class RekeyImeService :
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
     }
 
+    /** Never take over the whole screen: the app's own field must stay visible. */
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
     override fun onFinishInputView(finishingInput: Boolean) {
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
         super.onFinishInputView(finishingInput)
@@ -121,27 +116,11 @@ class RekeyImeService :
             ThemeMode.DARK -> true
         }
         RekeyTheme(settings = settings, darkTheme = dark) {
-            BoxWithConstraints(Modifier.fillMaxWidth().background(palette.canvas)) {
-                val scale = maxWidth.value / KeyboardCanvas.WIDTH.value
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(KeyboardCanvas.HEIGHT * scale)
-                        .background(palette.canvas),
-                ) {
-                    Box(
-                        Modifier
-                            .requiredSize(KeyboardCanvas.WIDTH, KeyboardCanvas.HEIGHT)
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                transformOrigin = TransformOrigin(0f, 0f)
-                            },
-                    ) {
-                        RekeyKeyboard(palette = palette, onKey = ::handleKey)
-                    }
-                }
-            }
+            ScaledKeyboard(
+                palette = palette,
+                modifier = Modifier.fillMaxWidth(),
+                onKey = ::handleKey,
+            )
         }
     }
 
