@@ -17,13 +17,16 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.findViewTreeViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.KeyboardPalettes
@@ -78,8 +81,36 @@ class RekeyImeService :
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent { ImeContent() }
         }
+        attachOwnersToWindow()
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         return view
+    }
+
+    /**
+     * Compose resolves its Recomposer from the window's ROOT view, not from the
+     * ComposeView it is attached to. In an input method that root is the
+     * platform's `parentPanel`, so owners set only on the ComposeView are never
+     * found and the keyboard throws "ViewTreeLifecycleOwner not found" the
+     * moment the window attaches. The decor view therefore needs them too.
+     */
+    private fun attachOwnersToWindow() {
+        val decor = window?.window?.decorView ?: return
+        if (decor.findViewTreeLifecycleOwner() == null) {
+            decor.setViewTreeLifecycleOwner(this)
+        }
+        if (decor.findViewTreeViewModelStoreOwner() == null) {
+            decor.setViewTreeViewModelStoreOwner(this)
+        }
+        if (decor.findViewTreeSavedStateRegistryOwner() == null) {
+            decor.setViewTreeSavedStateRegistryOwner(this)
+        }
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        // The window can be rebuilt between sessions; re-attach every time.
+        attachOwnersToWindow()
+        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {

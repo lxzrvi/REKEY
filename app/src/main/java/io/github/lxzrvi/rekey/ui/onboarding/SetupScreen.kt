@@ -115,6 +115,16 @@ fun SetupScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // The keyboard picker is a dialog, not another activity: this screen stays
+    // RESUMED while it is open, so ON_RESUME never fires after the choice.
+    // Poll until both steps are satisfied.
+    LaunchedEffect(Unit) {
+        while (step < 2) {
+            delay(350)
+            refresh()
+        }
+    }
+
     Box(modifier.fillMaxSize().testTag("setup")) {
         SquigglePattern(
             darkTheme = darkTheme,

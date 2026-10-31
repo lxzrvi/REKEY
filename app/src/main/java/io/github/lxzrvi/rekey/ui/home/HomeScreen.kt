@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -421,9 +422,15 @@ fun HomeScreen(
         }
 
         // The card under the finger travels over the header while still held.
-        if (liveDrag != null) {
+        val drag = liveDrag
+        // derivedStateOf so this flips once at the threshold instead of
+        // recomposing the whole page on every frame of the drag.
+        val dragLifted by remember(drag) {
+            derivedStateOf { drag != null && drag.offsetY() < -drag.hPx * 0.06f }
+        }
+        if (drag != null && dragLifted) {
             Box(Modifier.fillMaxSize().zIndex(49f)) {
-                LiveDragLayer(requireNotNull(liveDrag))
+                LiveDragLayer(drag)
             }
         }
 

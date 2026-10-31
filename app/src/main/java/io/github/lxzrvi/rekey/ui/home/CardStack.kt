@@ -65,15 +65,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import dev.chrisbanes.haze.HazeState
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.KeyboardPreset
 import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.design.MotionContract
-import io.github.lxzrvi.rekey.ui.blur.fullScreenBlur
-import io.github.lxzrvi.rekey.ui.blur.liveBlur
-import io.github.lxzrvi.rekey.ui.blur.liveBlurSource
-import io.github.lxzrvi.rekey.ui.blur.rememberLiveBlurState
 import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
@@ -387,7 +382,7 @@ fun CardStack(
                                 h = cardH,
                                 animateIn = item.animateIn,
                                 onEntered = { item.animateIn = false },
-                                lifted = { item.dragging },
+                                dragging = { item.dragging },
                                 offsetY = { item.offsetY },
                                 slideOut = side * ep,
                                 onBounds = { rect, w, h ->
@@ -434,7 +429,7 @@ fun CardStack(
                         h = cardH,
                         animateIn = false,
                         onEntered = {},
-                        lifted = { false },
+                        dragging = { false },
                         offsetY = { 0f },
                         slideOut = if (editId == null) 0f else ep,
                         onBounds = { _, _, _ -> },
@@ -503,7 +498,7 @@ private fun StackCard(
     h: Dp,
     animateIn: Boolean,
     onEntered: () -> Unit,
-    lifted: () -> Boolean,
+    dragging: () -> Boolean,
     offsetY: () -> Float,
     slideOut: Float,
     onBounds: (Rect, Float, Float) -> Unit,
@@ -521,11 +516,24 @@ private fun StackCard(
         onEntered()
     }
     val entering by remember { derivedStateOf { appear.value < 0.98f } }
-    val z by remember { derivedStateOf { 1000 - (abs(slot.value - pos()) * 20f).roundToInt() } }
+    val z by remember {
+        derivedStateOf {
+            // Quantise before ranking: a raw distance makes two equally distant
+            // cards trade places every frame, which reads as a flicker.
+            val band = (abs(slot.value - pos()) * 4f).roundToInt()
+            1000 - band
+        }
+    }
     // A card carries a full keyboard. Composing all of them costs far more than
     // the two neighbours the user can actually see, so gate the content on
     // distance and only recompose when that boolean flips.
-    val showContent by remember { derivedStateOf { abs(slot.value - pos()) < 1.45f } }
+    val showContent by remember { derivedStateOf { abs(slot.value - pos()) < 2.0f } }
+    // Only hand the card to the root overlay when it is genuinely climbing out
+    // of the clipped stack. A downward pull stays in the stack, so there is no
+    // cross-fade and nothing to flicker.
+    val lifted by remember {
+        derivedStateOf { dragging() && offsetY() < -hPx * 0.06f }
+    }
 
     Box(
         Modifier
@@ -553,7 +561,7 @@ private fun StackCard(
                 alpha = visibility * (ap * 1.8f).coerceIn(0f, 1f) *
                     (1f - abs(slideOut)).coerceIn(0f, 1f) *
                     // While the root overlay owns the drag, this copy stays hidden.
-                    (if (lifted()) 0f else 1f)
+                    (if (lifted) 0f else 1f)
             }
             .onGloballyPositioned { coords ->
                 val origin = coords.positionInRoot()
@@ -578,8 +586,14 @@ private fun StackCard(
  * The card *is* the keyboard.
  *
  * The layout is drawn edge-to-edge with no inner frame, and "Layout N" plus the
- * frosted X float on top of its header strip. Haze cannot blur an ancestor
- * source, so the keyboard is the source and both controls are siblings above it.
+ * X sit on translucent panels over its header strip.
+ *
+ * These panels deliberately do NOT use a live blur. What sits behind them is the
+ * card's own static keyboard, so blurring it live adds nothing visually — but a
+ * Haze source needs a frame to capture whenever the card is re-hosted (drag
+ * overlay, dismissal flight, editor), and that empty frame is exactly the
+ * flicker seen while dragging and swiping. A dense translucent panel looks the
+ * same and is correct on the very first frame.
  */
 @Composable
 fun PresetCardFace(
@@ -588,7 +602,6 @@ fun PresetCardFace(
     onRemove: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val faceBlur = rememberLiveBlurState()
     val shape = RoundedCornerShape(GlassContract.CORNER_DP.dp)
     BoxWithConstraints(modifier.fillMaxSize().clip(shape)) {
         // The keyboard canvas is 440 dp wide and scaled to the card. The label
@@ -600,7 +613,7 @@ fun PresetCardFace(
         val padH = (14f * scale).dp
         val closeSize = 30.dp
 
-        Box(Modifier.fillMaxSize().liveBlurSource(faceBlur)) {
+        Box(Modifier.fillMaxSize()) {
             ScaledKeyboard(
                 palette = preset.palette,
                 modifier = Modifier.fillMaxWidth(),
@@ -620,8 +633,8 @@ fun PresetCardFace(
                 .fillMaxWidth()
                 .height(stripH)
                 .clip(RoundedCornerShape(11.dp))
-                .liveBlur(faceBlur, fullScreenBlur(22.dp))
-                .background(preset.palette.canvas.copy(alpha = 0.78f))
+                .background(preset.palette.canvas.copy(alpha = 0.88f))
+                .border(1.dp, preset.palette.text.copy(alpha = 0.10f), RoundedCornerShape(11.dp))
                 .padding(horizontal = 10.dp, vertical = 2.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
@@ -664,8 +677,8 @@ fun PresetCardFace(
         }
         if (onRemove != null) {
             FrostedCross(
-                blurState = faceBlur,
                 tint = preset.palette.text,
+                paletteCanvas = preset.palette.canvas,
                 description = stringResource(R.string.remove_card_description, layoutNumber),
                 onClick = onRemove,
                 modifier = Modifier
@@ -679,8 +692,8 @@ fun PresetCardFace(
 /** The X: a live-blurred frosted disc with a translucent fallback wash. */
 @Composable
 private fun FrostedCross(
-    blurState: HazeState,
     tint: Color,
+    paletteCanvas: Color,
     description: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -697,8 +710,8 @@ private fun FrostedCross(
             .size(30.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(CircleShape)
-            .liveBlur(blurState, fullScreenBlur(GlassContract.BLUR_DP.dp))
-            .background(tint.copy(alpha = 0.16f))
+            .background(paletteCanvas.copy(alpha = 0.88f))
+            .background(tint.copy(alpha = 0.10f))
             .border(1.dp, tint.copy(alpha = 0.22f), CircleShape)
             .clickable(interactionSource = src, indication = null, onClick = onClick)
             .semantics { contentDescription = description },
