@@ -168,6 +168,9 @@ class RekeyImeService :
         updateWindowLayout()
     }
 
+    // Window.setDecorFitsSystemWindows is deprecated for activities, but an IME
+    // window has no WindowInsetsController equivalent that sizes the input area.
+    @Suppress("DEPRECATION")
     private fun updateWindowLayout() {
         val w = window?.window ?: return
         if (Build.VERSION.SDK_INT >= 35) {
