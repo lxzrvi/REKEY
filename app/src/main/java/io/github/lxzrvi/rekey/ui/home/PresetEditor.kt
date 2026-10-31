@@ -75,6 +75,7 @@ fun PresetEditor(
     inUse: Boolean,
     onBack: () -> Unit,
     onRename: (String) -> Unit,
+    onDetails: (String) -> Unit,
     onUse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -167,6 +168,15 @@ fun PresetEditor(
                     bold = true,
                     onValueChange = onRename,
                     modifier = Modifier.testTag("editor_name"),
+                )
+                EditableField(
+                    label = stringResource(R.string.editor_details_label),
+                    value = preset.details,
+                    placeholder = stringResource(R.string.editor_details_placeholder),
+                    fontSize = 14,
+                    bold = false,
+                    onValueChange = onDetails,
+                    modifier = Modifier.testTag("editor_details"),
                 )
                 Spacer(Modifier.height(2.dp))
                 Button(

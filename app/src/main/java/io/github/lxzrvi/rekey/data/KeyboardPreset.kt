@@ -129,6 +129,15 @@ object KeyboardPalettes {
     /** Used for a brand-new card so it matches the app's current theme. */
     fun forTheme(isDark: Boolean): KeyboardPalette = if (isDark) Graphite else Paper
 
+    /**
+     * The four shipped layouts. They can be renamed, re-described and used, but
+     * never removed — a keyboard must always have something to fall back to.
+     * Custom layouts start at id 5, so this range is stable across saves.
+     */
+    val defaultIds: IntRange = 1..4
+
+    fun isDefault(preset: KeyboardPreset): Boolean = preset.id in defaultIds
+
     val defaults: List<KeyboardPreset> = listOf(
         KeyboardPreset(
             id = 1,

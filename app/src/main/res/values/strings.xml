@@ -48,4 +48,12 @@
     <string name="test_keyboard_hint">Test your keyboard</string>
     <string name="ime_name">REKEY</string>
     <string name="ime_subtype">English (US)</string>
+    <string name="editor_details_label">Details</string>
+    <string name="editor_details_placeholder">Add a short description</string>
+    <string name="notice_default_preset">Can\'t remove default presets</string>
+    <string name="notice_preset_added">Layout added</string>
+    <string name="notice_preset_removed">Layout removed</string>
+    <string name="notice_preset_applied">Layout applied to keyboard</string>
+    <string name="notice_presets_reset">Default layouts restored</string>
+    <string name="notice_name_saved">Name updated</string>
 </resources>

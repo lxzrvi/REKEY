@@ -59,17 +59,33 @@ class RekeyImeService :
     private var palette by mutableStateOf(KeyboardPalettes.Paper)
     private var systemDark by mutableStateOf(false)
     private var suggestions by mutableStateOf(Words.pick())
+    private var destroyed = false
 
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val viewModelStore: ViewModelStore get() = store
     override val savedStateRegistry: SavedStateRegistry get() = savedStateController.savedStateRegistry
+
+    /**
+     * Every transition goes through here.
+     *
+     * `InputMethodService.onDestroy()` calls `doFinishInput()`, which calls
+     * `finishViews()`, which calls back into [onFinishInputView]. Tearing the
+     * registry down before `super.onDestroy()` therefore made that callback try
+     * to move a DESTROYED registry back to CREATED and killed the IME process.
+     * Once teardown has begun, no upward transition is allowed.
+     */
+    private fun moveLifecycle(state: Lifecycle.State) {
+        if (lifecycleRegistry.currentState == Lifecycle.State.DESTROYED) return
+        if (destroyed && state != Lifecycle.State.DESTROYED) return
+        lifecycleRegistry.currentState = state
+    }
 
     override fun onCreate() {
         super.onCreate()
         savedStateController.performAttach()
         savedStateController.performRestore(null)
         preferences = RekeyPreferences(this)
-        lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        moveLifecycle(Lifecycle.State.CREATED)
     }
 
     override fun onCreateInputView(): View {
@@ -82,7 +98,7 @@ class RekeyImeService :
             setContent { ImeContent() }
         }
         attachOwnersToWindow()
-        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+        moveLifecycle(Lifecycle.State.RESUMED)
         return view
     }
 
@@ -110,28 +126,40 @@ class RekeyImeService :
         super.onWindowShown()
         // The window can be rebuilt between sessions; re-attach every time.
         attachOwnersToWindow()
-        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+        moveLifecycle(Lifecycle.State.RESUMED)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         reloadTheme()
         suggestions = Words.pick()
-        lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+        moveLifecycle(Lifecycle.State.RESUMED)
     }
 
     /** Never take over the whole screen: the app's own field must stay visible. */
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        moveLifecycle(Lifecycle.State.CREATED)
         super.onFinishInputView(finishingInput)
     }
 
+    override fun onWindowHidden() {
+        moveLifecycle(Lifecycle.State.CREATED)
+        super.onWindowHidden()
+    }
+
     override fun onDestroy() {
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
-        store.clear()
+        // Latch first, let the framework run its finish callbacks, and only then
+        // destroy the registry. `super.onDestroy()` calls doFinishInput() ->
+        // finishViews() -> onFinishInputView(), so destroying the registry first
+        // made that callback attempt DESTROYED -> CREATED and kill the process.
+        destroyed = true
         super.onDestroy()
+        if (lifecycleRegistry.currentState != Lifecycle.State.DESTROYED) {
+            lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        }
+        store.clear()
     }
 
     private fun reloadTheme() {

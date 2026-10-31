@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,11 +32,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -68,6 +69,9 @@ import io.github.lxzrvi.rekey.data.KeyboardPalettes
 import io.github.lxzrvi.rekey.data.KeyboardPreset
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.design.GlassContract
+import io.github.lxzrvi.rekey.ui.components.NoticePill
+import io.github.lxzrvi.rekey.ui.components.rememberNoticeState
+import kotlinx.coroutines.delay
 import io.github.lxzrvi.rekey.design.MotionContract
 import io.github.lxzrvi.rekey.design.PatternContract
 import io.github.lxzrvi.rekey.ui.blur.bottomEdgeBlur
@@ -107,6 +111,11 @@ fun HomeScreen(
     var testMode by rememberSaveable { mutableStateOf(false) }
     var presetsHeightPx by remember { mutableFloatStateOf(0f) }
     val testFocus = remember { FocusRequester() }
+    val notice = rememberNoticeState()
+    val noticeAdded = stringResource(R.string.notice_preset_added)
+    val noticeRemoved = stringResource(R.string.notice_preset_removed)
+    val noticeApplied = stringResource(R.string.notice_preset_applied)
+    val noticeReset = stringResource(R.string.notice_presets_reset)
     val focusManager = LocalFocusManager.current
 
     val density = LocalDensity.current
@@ -160,6 +169,34 @@ fun HomeScreen(
             editorOpen -> closeEditor()
             drawerOpen -> drawerOpen = false
             else -> closeTest()
+        }
+    }
+
+    // Ask for the IME only after the field has slid up under the header. Asking
+    // while it is still travelling made the request land on a moving target and
+    // the keyboard frequently never appeared.
+    LaunchedEffect(testMode) {
+        if (testMode) {
+            delay(MotionContract.TEST_ENTER_MILLIS.toLong())
+            runCatching { testFocus.requestFocus() }
+            keyboard?.show()
+        }
+    }
+
+    // The system consumes the first back press to hide the IME, so the app's
+    // BackHandler never sees it. Watching the IME inset instead means that same
+    // single press also leaves test mode and lands on the main page.
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    var imeSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(testMode, imeVisible) {
+        if (!testMode) {
+            imeSeen = false
+            return@LaunchedEffect
+        }
+        if (imeVisible) {
+            imeSeen = true
+        } else if (imeSeen) {
+            closeTest()
         }
     }
 
@@ -229,6 +266,7 @@ fun HomeScreen(
                                     onRemove = { flying.add(it) },
                                     onRemoveCommitted = { id ->
                                         persist(presets.filterNot { it.id == id })
+                                        notice.show(noticeRemoved)
                                         if (activeId == id) {
                                             val fallback = presets.firstOrNull { it.id != id }?.id ?: 1
                                             activeId = fallback
@@ -246,12 +284,14 @@ fun HomeScreen(
                                         nextId += 1
                                         preferences.saveNextPresetId(nextId)
                                         persist(presets + fresh)
+                                        notice.show(noticeAdded)
                                     },
                                     onOpen = {
                                         anchor = it
                                         editorOpen = true
                                     },
                                     onLiveDrag = { liveDrag = it },
+                                    onNotice = { notice.show(it) },
                                 )
                             }
                             if (testProgress > 0.5f) {
@@ -331,9 +371,13 @@ fun HomeScreen(
                         },
                     )
                 },
+                onDetails = { value ->
+                    persist(presets.map { if (it.id == editingPreset.id) it.copy(details = value) else it })
+                },
                 onUse = {
                     activeId = editingPreset.id
                     preferences.saveActivePresetId(editingPreset.id)
+                    notice.show(noticeApplied)
                 },
                 modifier = Modifier.zIndex(31f),
             )
@@ -395,6 +439,7 @@ fun HomeScreen(
                             val defaults = KeyboardPalettes.defaults
                             val mine = presets.filter { p -> defaults.none { it.id == p.id } }
                             persist(defaults + mine)
+                            notice.show(noticeReset)
                             if (presets.none { it.id == activeId } && activeId !in defaults.map { it.id }) {
                                 activeId = defaults.first().id
                                 preferences.saveActivePresetId(defaults.first().id)
@@ -422,13 +467,10 @@ fun HomeScreen(
         }
 
         // The card under the finger travels over the header while still held.
+        // CardStack decides when to hand it over, so there is exactly one
+        // threshold in the codebase and the two copies can never disagree.
         val drag = liveDrag
-        // derivedStateOf so this flips once at the threshold instead of
-        // recomposing the whole page on every frame of the drag.
-        val dragLifted by remember(drag) {
-            derivedStateOf { drag != null && drag.offsetY() < -drag.hPx * 0.06f }
-        }
-        if (drag != null && dragLifted) {
+        if (drag != null) {
             Box(Modifier.fillMaxSize().zIndex(49f)) {
                 LiveDragLayer(drag)
             }
@@ -444,6 +486,15 @@ fun HomeScreen(
                 }
             }
         }
+
+        // Every in-app message lands in this one pill.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .zIndex(70f)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(bottom = 26.dp),
+        ) { NoticePill(notice) }
 
         // Fixed control: three dots morph into an X in the same spot. Hidden in the editor.
         if (editorProgress < 1f) {

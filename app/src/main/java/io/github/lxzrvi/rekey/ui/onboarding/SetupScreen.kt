@@ -97,14 +97,8 @@ fun SetupScreen(
         }
     }
 
-    // Picking REKEY in the picker is the last step: continue on its own, with a
-    // beat long enough for the second tick to be seen.
-    LaunchedEffect(step) {
-        if (step == 2) {
-            delay(420)
-            onFinished()
-        }
-    }
+    // Selecting REKEY only ARMS the Continue button. The owner presses it, so
+    // the main page never appears out from under them.
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

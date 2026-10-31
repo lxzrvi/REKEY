@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import io.github.lxzrvi.rekey.R
+import io.github.lxzrvi.rekey.data.KeyboardPalettes
 import io.github.lxzrvi.rekey.data.KeyboardPreset
 import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.design.MotionContract
@@ -73,6 +74,8 @@ import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
 import io.github.lxzrvi.rekey.ui.keyboard.CardHeaderHeight
+import io.github.lxzrvi.rekey.ui.keyboard.ImeToolbarHeight
+import io.github.lxzrvi.rekey.ui.keyboard.KeyboardPreviewSuggestions
 import io.github.lxzrvi.rekey.ui.keyboard.ScaledKeyboard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -87,7 +90,9 @@ import kotlin.math.tanh
 
 private val Smooth = spring<Float>(dampingRatio = 1f, stiffness = 120f)
 private val SlotSpring = spring<Float>(dampingRatio = 1f, stiffness = 200f)
-private val ReturnSpring = spring<Float>(dampingRatio = 0.9f, stiffness = 260f)
+// Critically damped: an underdamped return overshoots past zero, which
+// showed up as the card shaking and rotating after a downward pull.
+private val ReturnSpring = spring<Float>(dampingRatio = 1f, stiffness = 220f)
 private val ExitEasing = CubicBezierEasing(0.22f, 0.61f, 0.36f, 1f)
 
 /** Card corner radius is fixed by the glass contract. */
@@ -142,6 +147,8 @@ class CardAnchor(
 private class CardState(val id: Int, var animateIn: Boolean = true) {
     var removing by mutableStateOf(false)
     var dragging by mutableStateOf(false)
+    /** True while the root overlay, not this stack copy, owns the visuals. */
+    var overlay by mutableStateOf(false)
     var gone by mutableStateOf(false)
     var frozenIndex = 0
     var offsetY by mutableFloatStateOf(0f)
@@ -171,6 +178,7 @@ fun CardStack(
     onAdd: () -> Unit,
     onOpen: (CardAnchor) -> Unit,
     onLiveDrag: (LiveDrag?) -> Unit = {},
+    onNotice: (String) -> Unit = {},
     initialIndex: Int = 0,
     onIndexChanged: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -184,6 +192,7 @@ fun CardStack(
     val job = remember { arrayOfNulls<Job>(1) }
     val cardHPxHolder = remember { floatArrayOf(0f) }
     val seeded = remember { mutableStateOf(false) }
+    val defaultNotice = stringResource(R.string.notice_default_preset)
 
     // Keep one animation record per preset id; new cards animate in.
     presets.forEach { p ->
@@ -216,6 +225,12 @@ fun CardStack(
     }
 
     fun removePreset(p: KeyboardPreset) {
+        // The shipped layouts are the fallback set. Both the X and the upward
+        // swipe land here, so one guard covers both and says why it refused.
+        if (KeyboardPalettes.isDefault(p)) {
+            onNotice(defaultNotice)
+            return
+        }
         val item = stateFor(p)
         if (item.removing || item.gone) return
         item.returnJob?.cancel()
@@ -266,6 +281,30 @@ fun CardStack(
                 pos += if (out) d * 0.35f else d
             }
 
+            // The stack copy and the overlay must never both draw, and never both
+            // hide. CardStack decides, once, and publishes the result; the page
+            // just renders whatever it is handed.
+            fun setLifted(p: KeyboardPreset, item: CardState, want: Boolean) {
+                if (item.overlay == want) return
+                item.overlay = want
+                if (!want) {
+                    onLiveDrag(null)
+                    return
+                }
+                onLiveDrag(
+                    LiveDrag(
+                        preset = p,
+                        layoutNumber = (presets.indexOfFirst { it.id == p.id } + 1).coerceAtLeast(1),
+                        left = item.bounds.left,
+                        top = item.bounds.top - item.offsetY,
+                        width = item.layoutW.takeIf { it > 0f } ?: item.bounds.width,
+                        height = item.layoutH.takeIf { it > 0f } ?: item.bounds.height,
+                        hPx = hPx,
+                        offsetY = { item.offsetY },
+                    ),
+                )
+            }
+
             val verticalDrag = rememberDraggableState { delta ->
                 val p = live().getOrNull(target) ?: return@rememberDraggableState
                 val item = stateFor(p)
@@ -282,6 +321,7 @@ fun CardStack(
                 } else {
                     next
                 }
+                setLifted(p, item, item.offsetY < -hPx * 0.06f)
             }
 
             Box(
@@ -308,18 +348,6 @@ fun CardStack(
                                 if (!item.removing) {
                                     item.returnJob?.cancel()
                                     item.dragging = true
-                                    onLiveDrag(
-                                        LiveDrag(
-                                            preset = p,
-                                            layoutNumber = (presets.indexOfFirst { it.id == p.id } + 1).coerceAtLeast(1),
-                                            left = item.bounds.left,
-                                            top = item.bounds.top - item.offsetY,
-                                            width = item.layoutW.takeIf { it > 0f } ?: item.bounds.width,
-                                            height = item.layoutH.takeIf { it > 0f } ?: item.bounds.height,
-                                            hPx = hPx,
-                                            offsetY = { item.offsetY },
-                                        ),
-                                    )
                                 }
                             }
                         },
@@ -331,22 +359,31 @@ fun CardStack(
                                     val up = item.offsetY < 0f
                                     val far = -item.offsetY > hPx * 0.26f
                                     val fast = velocity < -900f && -item.offsetY > hPx * 0.05f
-                                    if (up && (far || fast)) {
+                                    val dismiss = up && (far || fast)
+                                    // A refused dismissal must still spring home,
+                                    // otherwise a default card stays stuck in the air.
+                                    if (dismiss && !KeyboardPalettes.isDefault(p)) {
                                         item.dragging = false
-                                        onLiveDrag(null)
+                                        setLifted(p, item, false)
                                         removePreset(p)
                                     } else {
+                                        if (dismiss) onNotice(defaultNotice)
                                         item.returnJob = scope.launch {
                                             animate(
                                                 initialValue = item.offsetY,
                                                 targetValue = 0f,
-                                                initialVelocity = velocity,
+                                                // A refused fling must not keep
+                                                // travelling upward first.
+                                                initialVelocity = if (dismiss) 0f else velocity,
                                                 animationSpec = ReturnSpring,
-                                            ) { value, _ -> item.offsetY = value }
+                                            ) { value, _ ->
+                                                item.offsetY = value
+                                                setLifted(p, item, value < -hPx * 0.06f)
+                                            }
                                             // Hand the card back to the stack only
                                             // once it is genuinely home again.
                                             item.dragging = false
-                                            onLiveDrag(null)
+                                            setLifted(p, item, false)
                                         }
                                     }
                                 }
@@ -382,7 +419,7 @@ fun CardStack(
                                 h = cardH,
                                 animateIn = item.animateIn,
                                 onEntered = { item.animateIn = false },
-                                dragging = { item.dragging },
+                                hidden = { item.overlay },
                                 offsetY = { item.offsetY },
                                 slideOut = side * ep,
                                 onBounds = { rect, w, h ->
@@ -429,7 +466,7 @@ fun CardStack(
                         h = cardH,
                         animateIn = false,
                         onEntered = {},
-                        dragging = { false },
+                        hidden = { false },
                         offsetY = { 0f },
                         slideOut = if (editId == null) 0f else ep,
                         onBounds = { _, _, _ -> },
@@ -498,7 +535,7 @@ private fun StackCard(
     h: Dp,
     animateIn: Boolean,
     onEntered: () -> Unit,
-    dragging: () -> Boolean,
+    hidden: () -> Boolean,
     offsetY: () -> Float,
     slideOut: Float,
     onBounds: (Rect, Float, Float) -> Unit,
@@ -516,29 +553,19 @@ private fun StackCard(
         onEntered()
     }
     val entering by remember { derivedStateOf { appear.value < 0.98f } }
-    val z by remember {
-        derivedStateOf {
-            // Quantise before ranking: a raw distance makes two equally distant
-            // cards trade places every frame, which reads as a flicker.
-            val band = (abs(slot.value - pos()) * 4f).roundToInt()
-            1000 - band
-        }
-    }
+    // Continuous distance, never quantised. Banding made two neighbours share a
+    // z value, and then declaration order decided which edge drew on top — the
+    // edges swapped front-to-back mid-swipe. A float ranking is always strict.
+    val z by remember { derivedStateOf { 1000f - abs(slot.value - pos()) } }
     // A card carries a full keyboard. Composing all of them costs far more than
     // the two neighbours the user can actually see, so gate the content on
     // distance and only recompose when that boolean flips.
     val showContent by remember { derivedStateOf { abs(slot.value - pos()) < 2.0f } }
-    // Only hand the card to the root overlay when it is genuinely climbing out
-    // of the clipped stack. A downward pull stays in the stack, so there is no
-    // cross-fade and nothing to flicker.
-    val lifted by remember {
-        derivedStateOf { dragging() && offsetY() < -hPx * 0.06f }
-    }
 
     Box(
         Modifier
             .size(w, h)
-            .zIndex(z.toFloat() + if (entering) 2f else 0f)
+            .zIndex(z + if (entering) 2f else 0f)
             .graphicsLayer {
                 val d = slot.value - pos()
                 val a = abs(d)
@@ -561,7 +588,7 @@ private fun StackCard(
                 alpha = visibility * (ap * 1.8f).coerceIn(0f, 1f) *
                     (1f - abs(slideOut)).coerceIn(0f, 1f) *
                     // While the root overlay owns the drag, this copy stays hidden.
-                    (if (lifted) 0f else 1f)
+                    (if (hidden()) 0f else 1f)
             }
             .onGloballyPositioned { coords ->
                 val origin = coords.positionInRoot()
@@ -609,7 +636,8 @@ fun PresetCardFace(
         // the keyboard's toolbar strip, at every card size.
         val scale = maxWidth.value / KeyboardCanvas.WIDTH.value
         val stripTop = (KeyboardCanvas.OUTER * scale).dp
-        val stripH = (CardHeaderHeight.value * scale).dp
+        // Leave a breath between the name panel and the toolbar below it.
+        val stripH = ((CardHeaderHeight.value - 8f) * scale).dp
         val padH = (14f * scale).dp
         val closeSize = 30.dp
 
@@ -617,9 +645,11 @@ fun PresetCardFace(
             ScaledKeyboard(
                 palette = preset.palette,
                 modifier = Modifier.fillMaxWidth(),
-                showToolbar = false,
-                headerHeight = CardHeaderHeight,
+                showToolbar = true,
+                headerHeight = ImeToolbarHeight,
+                extraHeaderHeight = CardHeaderHeight,
                 interactive = false,
+                suggestions = KeyboardPreviewSuggestions,
             )
         }
         Box(

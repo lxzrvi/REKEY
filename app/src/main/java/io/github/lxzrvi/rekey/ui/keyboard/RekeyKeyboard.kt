@@ -74,11 +74,14 @@ object KeyboardCanvas {
     /** Toolbar strip + four key rows + padding. */
     val HEIGHT: Dp = 265.dp
 
-    /** Taller strip for the card's name block, same key board. */
-    val CARD_HEIGHT: Dp = 297.dp
+    /**
+     * The card shows the name strip AND the real toolbar above the same key
+     * board: 225 (keys + padding) + 40 (toolbar) + 72 (name strip).
+     */
+    val CARD_HEIGHT: Dp = 337.dp
 
     const val RATIO = 440f / 265f
-    const val CARD_RATIO = 440f / 297f
+    const val CARD_RATIO = 440f / 337f
 
     const val OUTER = 7f
 }
@@ -95,6 +98,17 @@ private val Letters3 = "zxcvbnm".map { it.toString() }
 private val Symbols1 = "1234567890".map { it.toString() }
 private val Symbols2 = listOf("@", "#", "$", "%", "&", "-", "+", "(", ")")
 private val Symbols3 = listOf("*", "\"", "'", ":", ";", "!", "?")
+
+/**
+ * Single-code-point emoji only. A ZWJ sequence or a variation selector would be
+ * split in half by a single KEYCODE_DEL, leaving a broken glyph behind.
+ */
+private val EmojiRow1 = listOf("\uD83D\uDE00", "\uD83D\uDE01", "\uD83D\uDE02", "\uD83E\uDD23", "\uD83D\uDE0A", "\uD83D\uDE0D", "\uD83D\uDE18", "\uD83D\uDE0E", "\uD83E\uDD14")
+private val EmojiRow2 = listOf("\uD83D\uDE22", "\uD83D\uDE2D", "\uD83D\uDE21", "\uD83D\uDC4D", "\uD83D\uDC4E", "\uD83D\uDC4F", "\uD83D\uDE4F", "\uD83D\uDCAA", "\uD83D\uDD25")
+private val EmojiRow3 = listOf("\uD83D\uDC80", "\u2728", "\uD83C\uDF89", "\uD83D\uDCAF", "\uD83C\uDF1F", "\uD83D\uDE34", "\uD83E\uDD2F", "\uD83E\uDD73")
+
+/** Cards are previews, so their suggestion strip shows fixed specimen words. */
+val KeyboardPreviewSuggestions: List<String> = listOf("Hello", "Design", "Today")
 
 /** What the input method needs to know about a tap. */
 enum class KeyAction { TEXT, SPACE, ENTER, BACKSPACE, LANGUAGE, PASTE, CYCLE_THEME }
@@ -116,11 +130,13 @@ fun RekeyKeyboard(
     modifier: Modifier = Modifier,
     showToolbar: Boolean = true,
     headerHeight: Dp = ImeToolbarHeight,
+    extraHeaderHeight: Dp = 0.dp,
     interactive: Boolean = true,
     suggestions: List<String> = emptyList(),
     onKey: (KeyAction, String) -> Unit = { _, _ -> },
 ) {
     var open by remember { mutableStateOf(false) }
+    var emoji by remember { mutableStateOf(false) }
     var shift by remember { mutableStateOf(ShiftState.OFF) }
     var lastShiftTap by remember { mutableLongStateOf(0L) }
     var symbols by remember { mutableStateOf(false) }
@@ -161,6 +177,10 @@ fun RekeyKeyboard(
                 .background(p.canvas)
                 .padding(start = Outer, end = Outer, top = PadTop, bottom = PadBottom),
         ) {
+            // The card's name block sits above the toolbar; the IME has none.
+            if (extraHeaderHeight > 0.dp) {
+                Box(Modifier.fillMaxWidth().height(extraHeaderHeight))
+            }
             if (showToolbar) {
                 KeyboardToolbar(
                     p = p,
@@ -174,12 +194,16 @@ fun RekeyKeyboard(
                     onSuggestion = { emit(KeyAction.TEXT, "$it ") },
                     onPaste = { if (open) emit(KeyAction.PASTE) },
                     onTheme = { if (open) emit(KeyAction.CYCLE_THEME) },
+                    onLanguage = { if (open) emit(KeyAction.LANGUAGE) },
                 )
             } else {
                 Box(Modifier.fillMaxWidth().height(headerHeight))
             }
             Spacer(Modifier.height(rowGap))
 
+            if (emoji) {
+                EmojiPanel(ui, p, gap, rowGap, onPick = { emit(KeyAction.TEXT, it) }, onBackspace = { emit(KeyAction.BACKSPACE) })
+            } else {
             /* ROW 1 */
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                 (if (symbols) Symbols1 else Letters1).forEach { c ->
@@ -234,6 +258,7 @@ fun RekeyKeyboard(
                     RekeyGlyph(Glyph.BACKSPACE, p.text, Modifier.size(19.dp))
                 }
             }
+            }
             Spacer(Modifier.height(rowGap))
 
             /* ROW 4 */
@@ -241,12 +266,25 @@ fun RekeyKeyboard(
                 SpecialKey(ui, 1.45f, onPress = {
                     if (interactive) {
                         haptic()
-                        symbols = !symbols
+                        when {
+                            emoji -> emoji = false
+                            symbols -> symbols = false
+                            else -> symbols = true
+                        }
                         shift = ShiftState.OFF
                     }
-                }) { SpecialText(ui, if (symbols) "ABC" else "?123") }
-                SpecialKey(ui, 1f, onPress = { emit(KeyAction.LANGUAGE) }) {
-                    RekeyGlyph(Glyph.GLOBE, p.text, Modifier.size(19.dp))
+                }) { SpecialText(ui, if (symbols || emoji) "ABC" else "?123") }
+                SpecialKey(ui, 1f, onPress = {
+                    if (interactive) {
+                        haptic()
+                        emoji = !emoji
+                        if (emoji) {
+                            symbols = false
+                            shift = ShiftState.OFF
+                        }
+                    }
+                }) {
+                    RekeyGlyph(Glyph.SMILEY, if (emoji) p.enter else p.text, Modifier.size(19.dp))
                 }
                 KeyBox(
                     modifier = Modifier.weight(4.5f).height(ui.keyH),
@@ -289,6 +327,45 @@ fun RekeyKeyboard(
     }
 }
 
+/**
+ * Three rows of emoji occupying exactly the height of the three letter rows, so
+ * opening it never resizes the keyboard. The last slot is a backspace.
+ */
+@Composable
+private fun EmojiPanel(
+    ui: Ui,
+    p: KeyboardPalette,
+    gap: Dp,
+    rowGap: Dp,
+    onPick: (String) -> Unit,
+    onBackspace: () -> Unit,
+) {
+    val rows = listOf(EmojiRow1, EmojiRow2, EmojiRow3)
+    rows.forEachIndexed { index, row ->
+        if (index > 0) Spacer(Modifier.height(rowGap))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+            row.forEach { e ->
+                KeyBox(
+                    modifier = Modifier.weight(1f).height(ui.keyH),
+                    bg = p.key,
+                    pressedBg = p.special,
+                    border = p.border,
+                    interactive = ui.interactive,
+                    onHaptic = ui.haptic,
+                    onPress = { onPick(e) },
+                ) {
+                    Text(text = e, fontSize = 20.sp, lineHeight = 24.sp, maxLines = 1)
+                }
+            }
+            if (index == rows.lastIndex) {
+                SpecialKey(ui, 1f, repeat = true, onPress = onBackspace) {
+                    RekeyGlyph(Glyph.BACKSPACE, p.text, Modifier.size(19.dp))
+                }
+            }
+        }
+    }
+}
+
 /** Toolbar: suggestion strip on the left, expanding action pill on the right. */
 @Composable
 private fun KeyboardToolbar(
@@ -303,6 +380,7 @@ private fun KeyboardToolbar(
     onSuggestion: (String) -> Unit,
     onPaste: () -> Unit,
     onTheme: () -> Unit,
+    onLanguage: () -> Unit,
 ) {
     val pillTarget = (inner * 0.53f).coerceIn(175.dp, 211.dp)
     val pillWidth by animateDpAsState(
@@ -367,7 +445,7 @@ private fun KeyboardToolbar(
                 ToolBtn(ui, Glyph.PASTE, onPaste)
                 ToolBtn(ui, Glyph.TRANSLATE) {}
                 ToolBtn(ui, Glyph.PALETTE, onTheme)
-                ToolBtn(ui, Glyph.MORE) {}
+                ToolBtn(ui, Glyph.GLOBE, onLanguage)
             }
             KeyBox(
                 modifier = Modifier.size(35.dp),
@@ -576,6 +654,7 @@ fun ScaledKeyboard(
     modifier: Modifier = Modifier,
     showToolbar: Boolean = true,
     headerHeight: Dp = ImeToolbarHeight,
+    extraHeaderHeight: Dp = 0.dp,
     interactive: Boolean = true,
     suggestions: List<String> = emptyList(),
     onKey: (KeyAction, String) -> Unit = { _, _ -> },
@@ -590,6 +669,7 @@ fun ScaledKeyboard(
                 palette = palette,
                 showToolbar = showToolbar,
                 headerHeight = headerHeight,
+                extraHeaderHeight = extraHeaderHeight,
                 interactive = interactive,
                 suggestions = suggestions,
                 onKey = onKey,
