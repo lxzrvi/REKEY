@@ -72,6 +72,8 @@ import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.design.MotionContract
 import io.github.lxzrvi.rekey.ui.blur.fullScreenBlur
 import io.github.lxzrvi.rekey.ui.blur.liveBlur
+import io.github.lxzrvi.rekey.ui.blur.liveBlurSource
+import io.github.lxzrvi.rekey.ui.blur.rememberLiveBlurState
 import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
