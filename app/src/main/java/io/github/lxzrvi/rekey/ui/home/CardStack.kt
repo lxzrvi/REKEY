@@ -604,7 +604,7 @@ fun PresetCardFace(
             ScaledKeyboard(
                 palette = preset.palette,
                 modifier = Modifier.fillMaxWidth(),
-                showToolbar = true,
+                showToolbar = false,
                 headerHeight = CardHeaderHeight,
                 interactive = false,
             )

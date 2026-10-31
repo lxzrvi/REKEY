@@ -1,6 +1,8 @@
 package io.github.lxzrvi.rekey.ime
 
+import android.content.ClipboardManager
 import android.inputmethodservice.InputMethodService
+import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -28,7 +30,7 @@ import io.github.lxzrvi.rekey.data.KeyboardPalettes
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.data.ThemeMode
 import io.github.lxzrvi.rekey.ui.keyboard.KeyAction
-import io.github.lxzrvi.rekey.ui.keyboard.ScaledKeyboard
+import io.github.lxzrvi.rekey.ui.keyboard.RekeyKeyboard
 import io.github.lxzrvi.rekey.ui.theme.RekeyTheme
 
 /**
@@ -53,6 +55,7 @@ class RekeyImeService :
     private var settings by mutableStateOf(AppearanceSettings())
     private var palette by mutableStateOf(KeyboardPalettes.Paper)
     private var systemDark by mutableStateOf(false)
+    private var suggestions by mutableStateOf(Words.pick())
 
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     override val viewModelStore: ViewModelStore get() = store
@@ -82,6 +85,7 @@ class RekeyImeService :
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         reloadTheme()
+        suggestions = Words.pick()
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
     }
 
@@ -116,21 +120,27 @@ class RekeyImeService :
             ThemeMode.DARK -> true
         }
         RekeyTheme(settings = settings, darkTheme = dark) {
-            ScaledKeyboard(
+            RekeyKeyboard(
                 palette = palette,
                 modifier = Modifier.fillMaxWidth(),
+                suggestions = suggestions,
                 onKey = ::handleKey,
             )
         }
     }
 
     private fun handleKey(action: KeyAction, text: String) {
+        when (action) {
+            KeyAction.LANGUAGE -> { switchToNextInputMethod(false); return }
+            KeyAction.CYCLE_THEME -> { cycleTheme(); return }
+            else -> Unit
+        }
         val ic: InputConnection = currentInputConnection ?: return
         when (action) {
             KeyAction.TEXT, KeyAction.SPACE -> ic.commitText(text, 1)
             KeyAction.BACKSPACE -> {
                 val selected = ic.getSelectedText(0)
-                if (!selected.isNullOrEmpty()) ic.commitText("", 1) else ic.deleteSurroundingText(1, 0)
+                if (!selected.isNullOrEmpty()) ic.commitText("", 1) else sendDownUpKeyEvents(KeyEvent.KEYCODE_DEL)
             }
             KeyAction.ENTER -> {
                 val info = currentInputEditorInfo
@@ -140,10 +150,40 @@ class RekeyImeService :
                 ) {
                     ic.performEditorAction(actionId)
                 } else {
-                    ic.commitText("\n", 1)
+                    sendDownUpKeyEvents(KeyEvent.KEYCODE_ENTER)
                 }
             }
-            KeyAction.LANGUAGE -> switchToNextInputMethod(false)
+            KeyAction.PASTE -> pasteClipboard()
+            KeyAction.LANGUAGE, KeyAction.CYCLE_THEME -> Unit
         }
     }
+
+    /** The palette tool walks the saved layouts and remembers the choice. */
+    private fun cycleTheme() {
+        val all = preferences.loadPresets()
+        if (all.isEmpty()) return
+        val i = all.indexOfFirst { it.id == preferences.loadActivePresetId() }
+        val next = all[(i + 1) % all.size]
+        preferences.saveActivePresetId(next.id)
+        palette = next.palette
+    }
+
+    private fun pasteClipboard() {
+        val cm = getSystemService(ClipboardManager::class.java) ?: return
+        val text = cm.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)?.coerceToText(this)?.toString()
+        if (!text.isNullOrEmpty()) currentInputConnection?.commitText(text, 1)
+    }
+}
+
+/** Placeholder suggestions shown in the toolbar strip. */
+private object Words {
+    private val all = listOf(
+        "Hello", "Beautiful", "Today", "Amazing", "Dream",
+        "Creative", "Perfect", "Wonderful", "Design", "Explore",
+        "Lovely", "Awesome", "Music", "Style", "Welcome",
+        "Incredible", "Happy", "Forever", "Inspire", "Magic",
+    )
+    fun pick(): List<String> = all.shuffled().take(3)
 }

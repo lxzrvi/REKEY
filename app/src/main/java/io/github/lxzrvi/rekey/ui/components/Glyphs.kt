@@ -21,6 +21,7 @@ enum class Glyph {
     CROSS, PLUS, BACK, CHECK, CHEVRON_DOWN,
     PASTE, TRANSLATE, PALETTE, MORE,
     SHIFT, BACKSPACE, GLOBE, ENTER, KEYBOARD_TEXT,
+    CHEVRON_LEFT, SMILEY, CAPS_ON, CAPS_LOCK,
 }
 
 @Composable
@@ -36,6 +37,51 @@ fun RekeyGlyph(
         val stroke = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
         fun p(x: Float, y: Float) = Offset(x * s, y * s)
         when (glyph) {
+            Glyph.CHEVRON_LEFT -> {
+                val a = Path().apply {
+                    moveTo(14.5f * s, 5.5f * s)
+                    lineTo(8.5f * s, 12f * s)
+                    lineTo(14.5f * s, 18.5f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.SMILEY -> {
+                drawCircle(color, 8.6f * s, p(12f, 12f), style = stroke)
+                drawCircle(color, 1.15f * s, p(9f, 10f))
+                drawCircle(color, 1.15f * s, p(15f, 10f))
+                val a = Path().apply {
+                    moveTo(8.2f * s, 14.2f * s)
+                    quadraticTo(12f * s, 17.6f * s, 15.8f * s, 14.2f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.CAPS_ON -> {
+                val a = Path().apply {
+                    moveTo(12f * s, 3.5f * s)
+                    lineTo(20f * s, 11.5f * s)
+                    lineTo(15.5f * s, 11.5f * s)
+                    lineTo(15.5f * s, 18f * s)
+                    lineTo(8.5f * s, 18f * s)
+                    lineTo(8.5f * s, 11.5f * s)
+                    lineTo(4f * s, 11.5f * s)
+                    close()
+                }
+                drawPath(a, color)
+            }
+            Glyph.CAPS_LOCK -> {
+                val a = Path().apply {
+                    moveTo(12f * s, 2.5f * s)
+                    lineTo(20f * s, 10.5f * s)
+                    lineTo(15.5f * s, 10.5f * s)
+                    lineTo(15.5f * s, 15.5f * s)
+                    lineTo(8.5f * s, 15.5f * s)
+                    lineTo(8.5f * s, 10.5f * s)
+                    lineTo(4f * s, 10.5f * s)
+                    close()
+                }
+                drawPath(a, color)
+                drawLine(color, p(8.5f, 19f), p(15.5f, 19f), sw * 1.2f, StrokeCap.Round)
+            }
             Glyph.KEYBOARD_TEXT -> {
                 drawRoundRect(
                     color = color,
