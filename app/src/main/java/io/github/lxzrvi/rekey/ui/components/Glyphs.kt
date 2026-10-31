@@ -22,6 +22,8 @@ enum class Glyph {
     PASTE, TRANSLATE, PALETTE, MORE,
     SHIFT, BACKSPACE, GLOBE, ENTER, KEYBOARD_TEXT,
     CHEVRON_LEFT, SMILEY, CAPS_ON, CAPS_LOCK,
+    CHEVRON_RIGHT, CHEVRON_UP, COPY, CUT, SELECT_ALL,
+    HOME, END, BOLD, ITALIC, UNDERLINE,
 }
 
 @Composable
@@ -94,6 +96,92 @@ fun RekeyGlyph(
                     drawLine(color, p(x, 9.5f), p(x + 1.6f, 9.5f), sw, StrokeCap.Round)
                 }
                 drawLine(color, p(8f, 14.5f), p(16f, 14.5f), sw, StrokeCap.Round)
+            }
+            Glyph.CHEVRON_RIGHT -> {
+                val a = Path().apply {
+                    moveTo(9.5f * s, 5.5f * s)
+                    lineTo(15.5f * s, 12f * s)
+                    lineTo(9.5f * s, 18.5f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.CHEVRON_UP -> {
+                val a = Path().apply {
+                    moveTo(5.5f * s, 14.5f * s)
+                    lineTo(12f * s, 8.5f * s)
+                    lineTo(18.5f * s, 14.5f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.COPY -> {
+                drawRoundRect(color, p(8.5f, 3.5f), Size(12f * s, 14f * s), CornerRadius(2.2f * s, 2.2f * s), style = stroke)
+                val a = Path().apply {
+                    moveTo(15.5f * s, 20.5f * s)
+                    lineTo(5.5f * s, 20.5f * s)
+                    lineTo(5.5f * s, 7f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.CUT -> {
+                drawCircle(color, 3f * s, p(6.5f, 18f), style = stroke)
+                drawCircle(color, 3f * s, p(17.5f, 18f), style = stroke)
+                drawLine(color, p(8.6f, 15.8f), p(18f, 3.5f), sw, StrokeCap.Round)
+                drawLine(color, p(15.4f, 15.8f), p(6f, 3.5f), sw, StrokeCap.Round)
+            }
+            Glyph.SELECT_ALL -> {
+                val a = Path().apply {
+                    moveTo(4f * s, 8f * s); lineTo(4f * s, 4f * s); lineTo(8f * s, 4f * s)
+                    moveTo(16f * s, 4f * s); lineTo(20f * s, 4f * s); lineTo(20f * s, 8f * s)
+                    moveTo(20f * s, 16f * s); lineTo(20f * s, 20f * s); lineTo(16f * s, 20f * s)
+                    moveTo(8f * s, 20f * s); lineTo(4f * s, 20f * s); lineTo(4f * s, 16f * s)
+                }
+                drawPath(a, color, style = stroke)
+                drawRect(color, p(8.5f, 8.5f), Size(7f * s, 7f * s))
+            }
+            Glyph.HOME -> {
+                val a = Path().apply {
+                    moveTo(4f * s, 11.5f * s); lineTo(12f * s, 4.5f * s); lineTo(20f * s, 11.5f * s)
+                    moveTo(6.5f * s, 10.5f * s); lineTo(6.5f * s, 19.5f * s)
+                    lineTo(17.5f * s, 19.5f * s); lineTo(17.5f * s, 10.5f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.END -> {
+                drawLine(color, p(19f, 4.5f), p(19f, 19.5f), sw, StrokeCap.Round)
+                val a = Path().apply {
+                    moveTo(4f * s, 12f * s); lineTo(15f * s, 12f * s)
+                    moveTo(10.5f * s, 7.5f * s); lineTo(15f * s, 12f * s); lineTo(10.5f * s, 16.5f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.BOLD -> {
+                val a = Path().apply {
+                    moveTo(7f * s, 4.5f * s); lineTo(7f * s, 19.5f * s)
+                    lineTo(13.5f * s, 19.5f * s)
+                    quadraticTo(18.5f * s, 19.5f * s, 18.5f * s, 15.5f * s)
+                    quadraticTo(18.5f * s, 12f * s, 13.5f * s, 12f * s)
+                    lineTo(7f * s, 12f * s)
+                    moveTo(13.5f * s, 12f * s)
+                    quadraticTo(17.5f * s, 12f * s, 17.5f * s, 8.2f * s)
+                    quadraticTo(17.5f * s, 4.5f * s, 13.5f * s, 4.5f * s)
+                    lineTo(7f * s, 4.5f * s)
+                }
+                drawPath(a, color, style = stroke)
+            }
+            Glyph.ITALIC -> {
+                drawLine(color, p(10f, 4.5f), p(19f, 4.5f), sw, StrokeCap.Round)
+                drawLine(color, p(5f, 19.5f), p(14f, 19.5f), sw, StrokeCap.Round)
+                drawLine(color, p(14.5f, 4.5f), p(9.5f, 19.5f), sw, StrokeCap.Round)
+            }
+            Glyph.UNDERLINE -> {
+                val a = Path().apply {
+                    moveTo(6.5f * s, 4f * s); lineTo(6.5f * s, 11.5f * s)
+                    quadraticTo(6.5f * s, 16.5f * s, 12f * s, 16.5f * s)
+                    quadraticTo(17.5f * s, 16.5f * s, 17.5f * s, 11.5f * s)
+                    lineTo(17.5f * s, 4f * s)
+                }
+                drawPath(a, color, style = stroke)
+                drawLine(color, p(5f, 20.5f), p(19f, 20.5f), sw, StrokeCap.Round)
             }
             Glyph.CROSS -> {
                 drawLine(color, p(6.5f, 6.5f), p(17.5f, 17.5f), sw, StrokeCap.Round)

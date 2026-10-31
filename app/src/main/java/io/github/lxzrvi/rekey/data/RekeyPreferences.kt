@@ -58,6 +58,7 @@ class RekeyPreferences(context: Context) {
                         details = o.optString("details", ""),
                         palette = palette,
                         placeholder = o.optBoolean("placeholder", false),
+                        style = KeyboardStyle.fromJson(o.optJSONObject("style")),
                     ),
                 )
             }
@@ -74,7 +75,8 @@ class RekeyPreferences(context: Context) {
                     .put("name", p.name)
                     .put("details", p.details)
                     .put("palette", p.palette.toJson())
-                    .put("placeholder", p.placeholder),
+                    .put("placeholder", p.placeholder)
+                    .put("style", p.style.toJson()),
             )
         }
         prefs.edit { putString("presets_v1", arr.toString()) }

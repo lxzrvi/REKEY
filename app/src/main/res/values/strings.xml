@@ -59,4 +59,5 @@
     <string name="card_new_label">New</string>
     <string name="card_new_title">New layout</string>
     <string name="card_new_hint">Tap the card to start</string>
+    <string name="editor_edit_style">Edit</string>
 </resources>

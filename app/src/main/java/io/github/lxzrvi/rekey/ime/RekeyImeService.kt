@@ -40,9 +40,11 @@ import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.KeyboardPalettes
+import io.github.lxzrvi.rekey.data.KeyboardStyle
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.data.ThemeMode
 import io.github.lxzrvi.rekey.ui.keyboard.KeyAction
+import io.github.lxzrvi.rekey.ui.components.rememberUriImage
 import io.github.lxzrvi.rekey.ui.keyboard.RekeyKeyboard
 import io.github.lxzrvi.rekey.ui.theme.RekeyTheme
 
@@ -67,6 +69,8 @@ class RekeyImeService :
 
     private var settings by mutableStateOf(AppearanceSettings())
     private var palette by mutableStateOf(KeyboardPalettes.Paper)
+    private var style by mutableStateOf(KeyboardStyle())
+    private lateinit var feedback: KeyFeedback
     private var systemDark by mutableStateOf(false)
     private var suggestions by mutableStateOf(Words.pick())
     private var destroyed = false
@@ -98,6 +102,7 @@ class RekeyImeService :
         savedStateController.performAttach()
         savedStateController.performRestore(null)
         preferences = RekeyPreferences(this)
+        feedback = KeyFeedback(this)
         moveLifecycle(Lifecycle.State.CREATED)
     }
 
@@ -212,6 +217,7 @@ class RekeyImeService :
             lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         }
         store.clear()
+        if (::feedback.isInitialized) feedback.release()
     }
 
     private fun reloadTheme() {
@@ -219,8 +225,10 @@ class RekeyImeService :
         systemDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
         val active = preferences.loadActivePresetId()
-        palette = preferences.loadPresets().firstOrNull { it.id == active }?.palette
-            ?: KeyboardPalettes.Paper
+        val preset = preferences.loadPresets().firstOrNull { it.id == active }
+        palette = preset?.palette ?: KeyboardPalettes.Paper
+        style = preset?.style ?: KeyboardStyle()
+        if (::feedback.isInitialized) feedback.configure(style.feel)
     }
 
     @Composable
@@ -244,12 +252,18 @@ class RekeyImeService :
                         .isAppearanceLightNavigationBars = palette.canvas.luminance() > 0.5f
                 }
             }
+            val bg = rememberUriImage(
+                style.background.imageUri.takeIf { style.background.useImage },
+            )
             RekeyKeyboard(
                 palette = palette,
                 modifier = Modifier.fillMaxWidth(),
+                style = style,
+                backgroundImage = bg,
                 bottomInsetPx = navBottomPx,
                 leftInsetPx = navLeftPx,
                 rightInsetPx = navRightPx,
+                systemHaptic = false,
                 suggestions = suggestions,
                 onKey = ::handleKey,
             )
@@ -262,6 +276,7 @@ class RekeyImeService :
             KeyAction.CYCLE_THEME -> { cycleTheme(); return }
             else -> Unit
         }
+        feedback.tap()
         val ic: InputConnection = currentInputConnection ?: return
         when (action) {
             KeyAction.TEXT, KeyAction.SPACE -> ic.commitText(text, 1)
@@ -281,8 +296,32 @@ class RekeyImeService :
                 }
             }
             KeyAction.PASTE -> pasteClipboard()
+            KeyAction.LEFT -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
+            KeyAction.RIGHT -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
+            KeyAction.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
+            KeyAction.DOWN -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_DOWN)
+            KeyAction.HOME -> sendDownUpKeyEvents(KeyEvent.KEYCODE_MOVE_HOME)
+            KeyAction.END -> sendDownUpKeyEvents(KeyEvent.KEYCODE_MOVE_END)
+            KeyAction.SELECT_ALL -> ic.performContextMenuAction(android.R.id.selectAll)
+            KeyAction.COPY -> ic.performContextMenuAction(android.R.id.copy)
+            KeyAction.CUT -> ic.performContextMenuAction(android.R.id.cut)
+            KeyAction.BOLD -> sendCtrl(KeyEvent.KEYCODE_B)
+            KeyAction.ITALIC -> sendCtrl(KeyEvent.KEYCODE_I)
+            KeyAction.UNDERLINE -> sendCtrl(KeyEvent.KEYCODE_U)
             KeyAction.LANGUAGE, KeyAction.CYCLE_THEME -> Unit
         }
+    }
+
+    /** Formatting shortcuts for editors that understand them. */
+    private fun sendCtrl(keyCode: Int) {
+        val now = android.os.SystemClock.uptimeMillis()
+        val meta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+        currentInputConnection?.sendKeyEvent(
+            KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, meta),
+        )
+        currentInputConnection?.sendKeyEvent(
+            KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, meta),
+        )
     }
 
     /** The palette tool walks the saved layouts and remembers the choice. */
@@ -293,6 +332,8 @@ class RekeyImeService :
         val next = all[(i + 1) % all.size]
         preferences.saveActivePresetId(next.id)
         palette = next.palette
+        style = next.style
+        feedback.configure(style.feel)
     }
 
     private fun pasteClipboard() {
@@ -312,5 +353,5 @@ private object Words {
         "Lovely", "Awesome", "Music", "Style", "Welcome",
         "Incredible", "Happy", "Forever", "Inspire", "Magic",
     )
-    fun pick(): List<String> = all.shuffled().take(3)
+    fun pick(): List<String> = all.shuffled().take(5)
 }

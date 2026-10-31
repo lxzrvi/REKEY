@@ -72,9 +72,9 @@ import io.github.lxzrvi.rekey.data.KeyboardPreset
 import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.design.MotionContract
 import io.github.lxzrvi.rekey.ui.components.Glyph
+import io.github.lxzrvi.rekey.ui.components.rememberUriImage
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
-import io.github.lxzrvi.rekey.ui.keyboard.ImeToolbarHeight
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardPreviewSuggestions
 import io.github.lxzrvi.rekey.ui.keyboard.ScaledKeyboard
 import kotlinx.coroutines.Job
@@ -697,11 +697,16 @@ fun PresetCardFace(
         // Nothing but the keyboard and its suggestion bar. The layout number,
         // name and details live under the progress row, and the remove control
         // sits with them, so the preview is never covered by chrome.
+        val bg = rememberUriImage(
+            preset.style.background.imageUri.takeIf { preset.style.background.useImage },
+            maxPx = 720,
+        )
         ScaledKeyboard(
             palette = preset.palette,
             modifier = Modifier.fillMaxWidth(),
+            style = preset.style,
+            backgroundImage = bg,
             showToolbar = true,
-            headerHeight = ImeToolbarHeight,
             interactive = false,
             suggestions = KeyboardPreviewSuggestions,
         )

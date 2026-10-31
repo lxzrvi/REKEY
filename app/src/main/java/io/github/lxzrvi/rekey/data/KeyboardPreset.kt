@@ -62,6 +62,8 @@ data class KeyboardPreset(
     val details: String,
     val palette: KeyboardPalette,
     val placeholder: Boolean = false,
+    /** Everything the wizard edits. Defaults keep old saves looking identical. */
+    val style: KeyboardStyle = KeyboardStyle(),
 )
 
 object KeyboardPalettes {

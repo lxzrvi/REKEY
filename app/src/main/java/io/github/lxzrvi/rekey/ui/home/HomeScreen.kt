@@ -373,6 +373,9 @@ fun HomeScreen(
                 onDetails = { value ->
                     persist(presets.map { if (it.id == editingPreset.id) it.copy(details = value) else it })
                 },
+                onStyleChange = { value ->
+                    persist(presets.map { if (it.id == editingPreset.id) it.copy(style = value) else it })
+                },
                 onUse = {
                     activeId = editingPreset.id
                     preferences.saveActivePresetId(editingPreset.id)

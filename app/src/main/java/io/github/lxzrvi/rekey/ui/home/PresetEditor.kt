@@ -1,5 +1,8 @@
 package io.github.lxzrvi.rekey.ui.home
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.KeyboardPreset
+import io.github.lxzrvi.rekey.data.KeyboardStyle
+import io.github.lxzrvi.rekey.ui.editor.StyleWizard
 import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
 import io.github.lxzrvi.rekey.ui.components.Glyph
@@ -75,11 +81,18 @@ fun PresetEditor(
     onBack: () -> Unit,
     onRename: (String) -> Unit,
     onDetails: (String) -> Unit,
+    onStyleChange: (KeyboardStyle) -> Unit,
     onUse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val keyboard = LocalSoftwareKeyboardController.current
+    var styleOpen by rememberSaveable { mutableStateOf(false) }
+    val styleProgress by animateFloatAsState(
+        targetValue = if (styleOpen) 1f else 0f,
+        animationSpec = tween(360, easing = FastOutSlowInEasing),
+        label = "stylePane",
+    )
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val screenW = with(density) { maxWidth.toPx() }
@@ -143,13 +156,25 @@ fun PresetEditor(
         val fieldsAlpha = ((p - 0.55f) / 0.45f).coerceIn(0f, 1f)
         val fieldsTop = endTop + endH + gap
         val fieldsMaxH = with(density) { (maxHeight.toPx() - fieldsTop).coerceAtLeast(0f).toDp() }
+        val paneW = with(density) { maxWidth.toPx() }
         if (fieldsAlpha > 0f) {
+          Box(
+              Modifier
+                  .fillMaxWidth()
+                  .offset { IntOffset(0, fieldsTop.roundToInt()) }
+                  .height(fieldsMaxH)
+                  .graphicsLayer { alpha = fieldsAlpha },
+          ) {
+            // The wizard slides in from the right while the name, details and
+            // buttons slide out to the left. One progress value drives both, so
+            // going back is the same movement reversed.
             Column(
                 Modifier
-                    .fillMaxWidth()
-                    .offset { IntOffset(0, fieldsTop.roundToInt()) }
-                    .height(fieldsMaxH)
-                    .graphicsLayer { alpha = fieldsAlpha }
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        translationX = -paneW * styleProgress
+                        alpha = 1f - styleProgress
+                    }
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 28.dp),
@@ -185,7 +210,29 @@ fun PresetEditor(
                         fontSize = 14.sp,
                     )
                 }
+                Button(
+                    onClick = { keyboard?.hide(); styleOpen = true },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp).testTag("editor_edit"),
+                ) {
+                    Text(text = stringResource(R.string.editor_edit_style), fontSize = 14.sp)
+                }
             }
+            if (styleProgress > 0f) {
+                StyleWizard(
+                    style = preset.style,
+                    palette = preset.palette,
+                    onChange = onStyleChange,
+                    onDone = { styleOpen = false; onBack() },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationX = paneW * (1f - styleProgress)
+                            alpha = styleProgress
+                        },
+                )
+            }
+          }
         }
     }
 }
