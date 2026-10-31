@@ -129,6 +129,9 @@ class RekeyImeService :
      */
     private fun setUpEdgeToEdge() {
         val w = window?.window ?: return
+        // The board rounds its own corners. An opaque window behind them would
+        // fill those corners back in and the radius would never be visible.
+        w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(AndroidColor.TRANSPARENT))
         if (Build.VERSION.SDK_INT < 35) {
             @Suppress("DEPRECATION")
             w.navigationBarColor = AndroidColor.TRANSPARENT
@@ -183,7 +186,8 @@ class RekeyImeService :
         } else {
             w.setDecorFitsSystemWindows(true)
         }
-        w.attributes = w.attributes.apply { height = WindowManager.LayoutParams.MATCH_PARENT }
+        // Leave the window height to the framework. Forcing MATCH_PARENT made
+        // the IME cover the screen; the board only needs its input area wrapped.
         val inputArea = w.findViewById<View>(android.R.id.inputArea)
         val holder = inputArea?.parent as? View ?: return
         val lp = holder.layoutParams

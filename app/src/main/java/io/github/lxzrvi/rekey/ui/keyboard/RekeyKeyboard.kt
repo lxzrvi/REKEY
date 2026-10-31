@@ -221,7 +221,7 @@ fun RekeyKeyboard(
         )
 
         Box(Modifier.width(kbWidth).clip(boardShape)) {
-            KeyboardBackground(style.background, p.canvas, backgroundImage)
+            KeyboardBackground(Modifier.matchParentSize(), style.background, p.canvas, backgroundImage)
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -401,16 +401,22 @@ fun RekeyKeyboard(
 /**
  * Page 1's result: a flat colour, a two-stop gradient, or a photo, optionally
  * blurred and dimmed. The keys are drawn on top and stay solid.
+ *
+ * [modifier] MUST be Modifier.matchParentSize(). The board Box wraps its
+ * content, so a fillMaxSize child would expand to the whole incoming height —
+ * in an IME that is the entire window, which is what stretched the keyboard to
+ * the status bar. matchParentSize takes the size the keys decided instead.
  */
 @Composable
 private fun KeyboardBackground(
+    modifier: Modifier,
     spec: BackgroundStyle,
     fallback: Color,
     image: ImageBitmap?,
 ) {
     val base = spec.color ?: fallback
     if (spec.useImage && image != null) {
-        Box(Modifier.fillMaxSize().clipToBounds()) {
+        Box(modifier.clipToBounds()) {
             Image(
                 bitmap = image,
                 contentDescription = null,
@@ -440,9 +446,9 @@ private fun KeyboardBackground(
         } else {
             Brush.linearGradient(listOf(base, base))
         }
-        Box(Modifier.fillMaxSize().background(brush))
+        Box(modifier.background(brush))
         if (spec.dim > 0f) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = spec.dim)))
+            Box(modifier.background(Color.Black.copy(alpha = spec.dim)))
         }
     }
 }
