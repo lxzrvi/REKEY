@@ -718,7 +718,7 @@ private fun EmojiPanel(
                             onLongPress = if (e.variants.isEmpty() || !ui.interactive) null else {
                                 { popup = true }
                             },
-                            onLongRelease = {{ popup = false }},
+                            onLongRelease = { popup = false },
                             onPress = { onPick(e.char) },
                         ) { Text(text = e.char, fontSize = 22.sp, lineHeight = 26.sp, maxLines = 1) }
                         if (popup) {
@@ -912,7 +912,7 @@ private fun RowScope.CharKey(
         onLongPress = if (alternates.isEmpty() || !ui.interactive) null else {
             { popup = true }
         },
-        onLongRelease = {{ popup = false }},
+        onLongRelease = { popup = false },
         onPress = onPress,
     ) {
         if (photo != null) {
