@@ -144,7 +144,7 @@ val KeyboardPreviewSuggestions: List<String> = listOf("Hello", "Design", "Today"
 enum class KeyAction {
     TEXT, SPACE, ENTER, BACKSPACE, LANGUAGE, PASTE, CYCLE_THEME,
     LEFT, RIGHT, UP, DOWN, SELECT_ALL, COPY, CUT, HOME, END,
-    BOLD, ITALIC, UNDERLINE, HIDE, TOGGLE_FLOAT, SUGGEST, SWITCH_KEYBOARD, LONG_RELEASE, CURSOR,
+    BOLD, ITALIC, UNDERLINE, HIDE, TOGGLE_FLOAT, SUGGEST, SWITCH_KEYBOARD, LONG_RELEASE, CURSOR, CLIPBOARD,
 }
 
 private enum class ShiftState { OFF, ON, CAPS }
@@ -231,6 +231,14 @@ fun RekeyKeyboard(
 
         fun emit(action: KeyAction, text: String = "") {
             if (!interactive) return
+            // The pill is a momentary tray: typing anything dismisses it. Its
+            // own icons go through emitRaw so they can be used repeatedly.
+            if (open) open = false
+            onKey(action, text)
+        }
+
+        fun emitRaw(action: KeyAction, text: String = "") {
+            if (!interactive) return
             onKey(action, text)
         }
 
@@ -287,9 +295,10 @@ fun RekeyKeyboard(
                         suggestions = suggestions,
                         onToggle = { open = !open },
                         onSuggestion = { emit(KeyAction.SUGGEST, it) },
-                        onPaste = { if (open) emit(KeyAction.PASTE) },
-                        onTheme = { if (open) emit(KeyAction.CYCLE_THEME) },
-                        onLanguage = { if (open) emit(KeyAction.LANGUAGE) },
+                        onPaste = { if (open) emitRaw(KeyAction.CLIPBOARD) },
+                        onTheme = { if (open) emitRaw(KeyAction.CYCLE_THEME) },
+                        onLanguage = { if (open) emitRaw(KeyAction.LANGUAGE) },
+                        onSwitchKeyboard = { if (open) emitRaw(KeyAction.SWITCH_KEYBOARD) },
                     )
                     Spacer(Modifier.height(rowGap))
                 }
@@ -515,7 +524,7 @@ private fun Grabber(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(18.dp)
+            .height(12.dp)
             .pointerInput(floating) {
                 var dragged = 0f
                 detectVerticalDragGestures(
@@ -758,6 +767,7 @@ private fun KeyboardToolbar(
     onPaste: () -> Unit,
     onTheme: () -> Unit,
     onLanguage: () -> Unit,
+    onSwitchKeyboard: () -> Unit,
 ) {
     val pillTarget = (inner * 0.53f).coerceIn(175.dp, 211.dp)
     val pillWidth by animateDpAsState(
@@ -827,7 +837,7 @@ private fun KeyboardToolbar(
             ) {
                 val iconTint = spec.pillIconColor ?: ui.textColor
                 if (spec.pillPaste) ToolBtn(ui, Glyph.PASTE, iconTint, onPaste)
-                if (spec.pillTranslate) ToolBtn(ui, Glyph.TRANSLATE, iconTint) {}
+                if (spec.pillTranslate) ToolBtn(ui, Glyph.KEYBOARD_TEXT, iconTint, onSwitchKeyboard)
                 if (spec.pillTheme) ToolBtn(ui, Glyph.PALETTE, iconTint, onTheme)
                 if (spec.pillLanguage) ToolBtn(ui, Glyph.GLOBE, iconTint, onLanguage)
             }

@@ -89,7 +89,7 @@ internal fun DrawerFooter() {
     var feedback by remember { mutableStateOf(false) }
     var about by remember { mutableStateOf(false) }
 
-    DrawerAction(Glyph.EDIT, "Feedback", "Tell me what broke or what to add") { feedback = true }
+    DrawerAction(Glyph.BOLD, "Feedback", "Tell me what broke or what to add") { feedback = true }
     DrawerAction(Glyph.TRANSLATE, "Share REKEY", "Send the app to a friend") {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"

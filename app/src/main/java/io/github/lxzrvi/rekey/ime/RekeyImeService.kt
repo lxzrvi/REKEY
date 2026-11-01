@@ -447,6 +447,7 @@ class RekeyImeService :
                 updateSuggestions()
             }
             KeyAction.PASTE -> pasteClipboard()
+            KeyAction.CLIPBOARD -> pasteClipboard()
             KeyAction.LEFT -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_LEFT)
             KeyAction.RIGHT -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_RIGHT)
             KeyAction.UP -> sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_UP)
@@ -460,7 +461,8 @@ class RekeyImeService :
             KeyAction.ITALIC -> sendCtrl(KeyEvent.KEYCODE_I)
             KeyAction.UNDERLINE -> sendCtrl(KeyEvent.KEYCODE_U)
             KeyAction.LANGUAGE, KeyAction.CYCLE_THEME, KeyAction.HIDE, KeyAction.TOGGLE_FLOAT,
-            KeyAction.SUGGEST, KeyAction.SWITCH_KEYBOARD, KeyAction.LONG_RELEASE, KeyAction.CURSOR -> Unit
+            KeyAction.SUGGEST, KeyAction.SWITCH_KEYBOARD, KeyAction.LONG_RELEASE,
+            KeyAction.CURSOR, KeyAction.CLIPBOARD -> Unit
         }
     }
 

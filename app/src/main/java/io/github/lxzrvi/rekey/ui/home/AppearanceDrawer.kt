@@ -1,6 +1,7 @@
 package io.github.lxzrvi.rekey.ui.home
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
 import io.github.lxzrvi.rekey.R
+import io.github.lxzrvi.rekey.ui.editor.ColorWheelDialog
+import io.github.lxzrvi.rekey.ui.components.Glyph
+import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import io.github.lxzrvi.rekey.data.AccentChoice
 import io.github.lxzrvi.rekey.data.AppearanceSettings
 import io.github.lxzrvi.rekey.data.ThemeMode
@@ -194,14 +198,26 @@ private fun HexColorField(current: Int, onColor: (Int) -> Unit) {
     var hex by remember(current) { mutableStateOf(String.format(Locale.US, "#%06X", 0xFFFFFF and current)) }
     var error by remember { mutableStateOf(false) }
     val preview = Color(current)
+    var wheel by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Tapping the swatch opens the full colour wheel; the hex field
+            // stays for anyone who already knows the value they want.
             Box(
                 Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(preview),
-            )
+                    .background(preview)
+                    .clickable { wheel = true }
+                    .testTag("hex_color_wheel"),
+                contentAlignment = Alignment.Center,
+            ) {
+                RekeyGlyph(
+                    Glyph.PALETTE,
+                    Color.White.copy(alpha = 0.85f),
+                    Modifier.size(15.dp),
+                )
+            }
             OutlinedTextField(
                 value = hex,
                 onValueChange = { hex = it.take(7); error = false },
@@ -234,6 +250,24 @@ private fun HexColorField(current: Int, onColor: (Int) -> Unit) {
                 color = MaterialTheme.colorScheme.error,
             )
         }
+    }
+    if (wheel) {
+        ColorWheelDialog(
+            title = "Accent colour",
+            initial = preview,
+            onDismiss = { wheel = false },
+            onInherit = null,
+            onPick = { c ->
+                val argb = android.graphics.Color.argb(
+                    (c.alpha * 255).toInt(), (c.red * 255).toInt(),
+                    (c.green * 255).toInt(), (c.blue * 255).toInt(),
+                )
+                hex = String.format(Locale.US, "#%06X", 0xFFFFFF and argb)
+                error = false
+                onColor(argb)
+                wheel = false
+            },
+        )
     }
 }
 
