@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.lxzrvi.rekey"
         minSdk = 31
         targetSdk = 37
-        versionCode = 17
-        versionName = "0.11.1"
+        versionCode = 18
+        versionName = "0.12.0"
         vectorDrawables.useSupportLibrary = true
     }
 

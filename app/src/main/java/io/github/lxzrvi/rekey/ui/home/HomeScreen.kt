@@ -136,6 +136,8 @@ fun HomeScreen(
         label = "editorProgress",
     )
 
+    var appLanguage by remember { mutableStateOf(preferences.loadAppLanguage()) }
+
     val testProgress by animateFloatAsState(
         targetValue = if (testMode) 1f else 0f,
         animationSpec = tween(
@@ -320,6 +322,29 @@ fun HomeScreen(
                                     // Slides up into the space the presets vacated,
                                     // landing just under the header.
                                     translationY = -presetsHeightPx * testProgress
+                                },
+                        )
+                        QuickBoxes(
+                            language = appLanguage,
+                            onLanguage = { tag, scope ->
+                                if (scope != LanguageScope.APP) preferences.saveKeyboardLanguage(tag)
+                                if (scope != LanguageScope.KEYBOARD) {
+                                    preferences.saveAppLanguage(tag)
+                                    appLanguage = tag
+                                }
+                                notice.show(
+                                    when (scope) {
+                                        LanguageScope.KEYBOARD -> "Keyboard language updated"
+                                        LanguageScope.APP -> "App language updated"
+                                        LanguageScope.BOTH -> "Keyboard and app language updated"
+                                    },
+                                )
+                            },
+                            modifier = Modifier
+                                .padding(start = 20.dp, end = 20.dp, top = 12.dp)
+                                .graphicsLayer {
+                                    translationY = -presetsHeightPx * testProgress
+                                    alpha = 1f - testProgress
                                 },
                         )
                     }

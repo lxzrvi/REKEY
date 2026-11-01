@@ -147,6 +147,9 @@ fun AppearanceDrawer(
                 )
             }
         }
+
+        SectionLabel("More")
+        DrawerFooter()
     }
 }
 

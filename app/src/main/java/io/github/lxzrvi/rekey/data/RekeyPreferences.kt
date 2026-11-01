@@ -89,6 +89,13 @@ class RekeyPreferences(context: Context) {
     fun saveSelectedCard(index: Int) = prefs.edit { putInt("selected_card", index.coerceAtLeast(0)) }
 
     /** Layout the input method should paint with. */
+    /** Language chosen for the keyboard, independent of the app's own locale. */
+    fun loadKeyboardLanguage(): String = prefs.getString("lang_keyboard", "en") ?: "en"
+    fun saveKeyboardLanguage(tag: String) = prefs.edit { putString("lang_keyboard", tag) }
+
+    fun loadAppLanguage(): String = prefs.getString("lang_app", "en") ?: "en"
+    fun saveAppLanguage(tag: String) = prefs.edit { putString("lang_app", tag) }
+
     fun loadActivePresetId(): Int = prefs.getInt("active_preset", 1)
     fun saveActivePresetId(id: Int) = prefs.edit { putInt("active_preset", id) }
 }
