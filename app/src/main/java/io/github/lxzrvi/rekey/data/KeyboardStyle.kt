@@ -109,8 +109,11 @@ data class LayoutStyle(
     val cornerTopRight: Float = 18f,
     val cornerBottomLeft: Float = 0f,
     val cornerBottomRight: Float = 0f,
+    /** One slider drives all four corners while this is on. */
+    val cornersLinked: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject()
+        .put("cornersLinked", cornersLinked)
         .put("heightScale", heightScale.toDouble())
         .put("widthScale", widthScale.toDouble())
         .put("padHorizontal", padHorizontal.toDouble())
@@ -139,6 +142,7 @@ data class LayoutStyle(
                 cornerTopRight = o.f("cornerTopRight", d.cornerTopRight),
                 cornerBottomLeft = o.f("cornerBottomLeft", d.cornerBottomLeft),
                 cornerBottomRight = o.f("cornerBottomRight", d.cornerBottomRight),
+                cornersLinked = o.optBoolean("cornersLinked", d.cornersLinked),
             )
         }
     }
@@ -158,8 +162,32 @@ data class KeyStyle(
     val enterTextColor: Color? = null,
     val borderWidth: Float = 1f,
     val borderColor: Color? = null,
+    /** One slider drives all four key corners while this is on. */
+    val cornersLinked: Boolean = true,
+    val cornerTopLeft: Float = 8f,
+    val cornerTopRight: Float = 8f,
+    val cornerBottomLeft: Float = 8f,
+    val cornerBottomRight: Float = 8f,
+    /** A photo shown inside every letter key. */
+    val imageUri: String? = null,
+    val imageAlpha: Float = 1f,
+    /** Per-key colour / image / sound / radius, keyed by the key's label. */
+    val overrides: Map<String, KeyOverride> = emptyMap(),
 ) {
+    /** Effective corner shape, honouring the link toggle. */
+    fun shapeRadii(): FloatArray =
+        if (cornersLinked) floatArrayOf(radius, radius, radius, radius)
+        else floatArrayOf(cornerTopLeft, cornerTopRight, cornerBottomRight, cornerBottomLeft)
+
     fun toJson(): JSONObject = JSONObject()
+        .put("cornersLinked", cornersLinked)
+        .put("cornerTopLeft", cornerTopLeft.toDouble())
+        .put("cornerTopRight", cornerTopRight.toDouble())
+        .put("cornerBottomLeft", cornerBottomLeft.toDouble())
+        .put("cornerBottomRight", cornerBottomRight.toDouble())
+        .put("imageUri", imageUri ?: JSONObject.NULL)
+        .put("imageAlpha", imageAlpha.toDouble())
+        .put("overrides", JSONObject().apply { overrides.forEach { (k, v) -> put(k, v.toJson()) } })
         .put("radius", radius.toDouble())
         .put("textSize", textSize.toDouble())
         .putColor("textColor", textColor)
@@ -190,6 +218,60 @@ data class KeyStyle(
                 enterTextColor = o.color("enterTextColor"),
                 borderWidth = o.f("borderWidth", d.borderWidth),
                 borderColor = o.color("borderColor"),
+                cornersLinked = o.optBoolean("cornersLinked", d.cornersLinked),
+                cornerTopLeft = o.f("cornerTopLeft", d.radius),
+                cornerTopRight = o.f("cornerTopRight", d.radius),
+                cornerBottomLeft = o.f("cornerBottomLeft", d.radius),
+                cornerBottomRight = o.f("cornerBottomRight", d.radius),
+                imageUri = if (o.isNull("imageUri")) null else o.optString("imageUri", "").ifBlank { null },
+                imageAlpha = o.f("imageAlpha", d.imageAlpha),
+                overrides = o.optJSONObject("overrides")?.let { obj ->
+                    buildMap {
+                        obj.keys().forEach { k -> put(k, KeyOverride.fromJson(obj.optJSONObject(k))) }
+                    }
+                } ?: emptyMap(),
+            )
+        }
+    }
+}
+
+/**
+ * One key's own look, overriding the shared key style.
+ *
+ * Null means "inherit", so an override only ever stores what the owner actually
+ * changed. Sound is an index into [KeySounds]; -1 means inherit.
+ */
+data class KeyOverride(
+    val color: Color? = null,
+    val textColor: Color? = null,
+    val imageUri: String? = null,
+    val imageAlpha: Float = 1f,
+    val soundIndex: Int = -1,
+    val radius: Float = -1f,
+) {
+    val isEmpty: Boolean
+        get() = color == null && textColor == null && imageUri == null &&
+            soundIndex < 0 && radius < 0f
+
+    fun toJson(): JSONObject = JSONObject()
+        .putColor("color", color)
+        .putColor("textColor", textColor)
+        .put("imageUri", imageUri ?: JSONObject.NULL)
+        .put("imageAlpha", imageAlpha.toDouble())
+        .put("soundIndex", soundIndex)
+        .put("radius", radius.toDouble())
+
+    companion object {
+        fun fromJson(o: JSONObject?): KeyOverride {
+            val d = KeyOverride()
+            if (o == null) return d
+            return KeyOverride(
+                color = o.color("color"),
+                textColor = o.color("textColor"),
+                imageUri = if (o.isNull("imageUri")) null else o.optString("imageUri", "").ifBlank { null },
+                imageAlpha = o.f("imageAlpha", d.imageAlpha),
+                soundIndex = o.optInt("soundIndex", d.soundIndex),
+                radius = o.f("radius", d.radius),
             )
         }
     }

@@ -1,8 +1,5 @@
 package io.github.lxzrvi.rekey.ui.editor
 
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -36,10 +34,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.lxzrvi.rekey.data.ArrowStyle
 import io.github.lxzrvi.rekey.data.BackgroundStyle
 import io.github.lxzrvi.rekey.data.FeelStyle
 import io.github.lxzrvi.rekey.data.KeySounds
+import io.github.lxzrvi.rekey.data.KeyOverride
 import io.github.lxzrvi.rekey.data.KeyStyle
 import io.github.lxzrvi.rekey.data.KeyboardPalette
 import io.github.lxzrvi.rekey.data.KeyboardStyle
@@ -52,11 +50,11 @@ import io.github.lxzrvi.rekey.ime.KeyFeedback
 private fun scrollFor(page: Int): ScrollState = remember(page) { ScrollState(0) }
 
 private val PageTitles = listOf(
-    "Background", "Keyboard layout", "Keys", "Touch & feel", "Suggestion bar", "Arrow bar",
+    "Background", "Keyboard layout", "Keys", "Touch & feel", "Suggestion bar",
 )
 
 /**
- * The six-page style editor.
+ * The five-page style editor.
  *
  * Every page owns one section of [KeyboardStyle], which is what makes "Reset"
  * local: it replaces that section with its default and leaves the other five
@@ -125,8 +123,7 @@ fun StyleWizard(
                 1 -> LayoutPage(style.layout) { onChange(style.copy(layout = it)) }
                 2 -> KeysPage(style.keys, palette) { onChange(style.copy(keys = it)) }
                 3 -> FeelPage(style.feel) { onChange(style.copy(feel = it)) }
-                4 -> SuggestionPage(style.suggestions, palette) { onChange(style.copy(suggestions = it)) }
-                else -> ArrowPage(style.arrows, palette) { onChange(style.copy(arrows = it)) }
+                else -> SuggestionPage(style.suggestions, palette) { onChange(style.copy(suggestions = it)) }
             }
         }
 
@@ -149,8 +146,7 @@ fun StyleWizard(
                         1 -> style.copy(layout = LayoutStyle())
                         2 -> style.copy(keys = KeyStyle())
                         3 -> style.copy(feel = FeelStyle())
-                        4 -> style.copy(suggestions = SuggestionStyle())
-                        else -> style.copy(arrows = ArrowStyle())
+                        else -> style.copy(suggestions = SuggestionStyle())
                     },
                 )
             }) { Text("Reset", fontSize = 12.sp) }
@@ -181,18 +177,6 @@ private fun BackgroundPage(
     palette: KeyboardPalette,
     onChange: (BackgroundStyle) -> Unit,
 ) {
-    val context = LocalContext.current
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
-            }
-            onChange(spec.copy(useImage = true, imageUri = uri.toString()))
-        }
-    }
-
     Panel("Source") {
         SegmentRow(
             label = "Fill the tray with",
@@ -206,30 +190,34 @@ private fun BackgroundPage(
     if (!spec.useImage) {
         Panel("Colour") {
             ColorRow("Base colour", spec.color, palette.canvas) { onChange(spec.copy(color = it)) }
-            ColorRow("Gradient end", spec.gradient, palette.canvas) { onChange(spec.copy(gradient = it)) }
+            GradientRow(
+                label = "Gradient",
+                start = spec.color ?: palette.canvas,
+                end = spec.gradient,
+                angle = spec.gradientAngle,
+            ) { start, end, angle ->
+                onChange(spec.copy(color = start, gradient = end, gradientAngle = angle))
+            }
+            Text(
+                text = "Both ends and the angle are set in one place.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (spec.gradient != null) {
-                SliderRow("Gradient angle", spec.gradientAngle, 0f..360f, { onChange(spec.copy(gradientAngle = it)) }, "°")
+                TextButton(onClick = { onChange(spec.copy(gradient = null)) }) {
+                    Text("Turn gradient off", fontSize = 11.sp)
+                }
             }
         }
     } else {
         Panel("Image") {
-            Button(
-                onClick = { picker.launch(arrayOf("image/*")) },
-                shape = RoundedCornerShape(11.dp),
-                modifier = Modifier.fillMaxWidth().height(42.dp),
-            ) { Text(if (spec.imageUri == null) "Choose image" else "Change image", fontSize = 13.sp) }
-            Text(
-                text = if (spec.imageUri == null) "No image selected" else "Image selected",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            ImageRow(
+                label = "Background photo",
+                uri = spec.imageUri,
+                preferredRatio = 5f / 3f,
+            ) { onChange(spec.copy(imageUri = it, useImage = it != null)) }
             SliderRow("Zoom", spec.imageScale, 1f..2.5f, { onChange(spec.copy(imageScale = it)) }, "x", 2)
             SliderRow("Blur", spec.blurDp, 0f..25f, { onChange(spec.copy(blurDp = it)) }, " dp")
-            if (spec.imageUri != null) {
-                TextButton(onClick = { onChange(spec.copy(imageUri = null, useImage = false)) }) {
-                    Text("Remove image", fontSize = 12.sp)
-                }
-            }
         }
     }
     Panel("Readability") {
@@ -252,18 +240,44 @@ private fun LayoutPage(spec: LayoutStyle, onChange: (LayoutStyle) -> Unit) {
     }
     Panel("Padding") {
         SliderRow("Left & right", spec.padHorizontal, 0f..24f, { onChange(spec.copy(padHorizontal = it)) }, " dp")
-        SliderRow("Top", spec.padTop, 0f..28f, { onChange(spec.copy(padTop = it)) }, " dp")
-        SliderRow("Bottom", spec.padBottom, 0f..28f, { onChange(spec.copy(padBottom = it)) }, " dp")
+        SliderRow("Top", spec.padTop, -16f..28f, { onChange(spec.copy(padTop = it)) }, " dp")
+        SliderRow("Bottom", spec.padBottom, -16f..28f, { onChange(spec.copy(padBottom = it)) }, " dp")
+        Text(
+            text = "Negative values pull the keys past the edge of the tray.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     Panel("Spacing") {
         SliderRow("Between rows", spec.rowGap, 0f..18f, { onChange(spec.copy(rowGap = it)) }, " dp")
         SliderRow("Between keys", spec.keyGap, 0f..12f, { onChange(spec.copy(keyGap = it)) }, " dp")
     }
     Panel("Corners") {
-        SliderRow("Top left", spec.cornerTopLeft, 0f..36f, { onChange(spec.copy(cornerTopLeft = it)) }, " dp")
-        SliderRow("Top right", spec.cornerTopRight, 0f..36f, { onChange(spec.copy(cornerTopRight = it)) }, " dp")
-        SliderRow("Bottom left", spec.cornerBottomLeft, 0f..36f, { onChange(spec.copy(cornerBottomLeft = it)) }, " dp")
-        SliderRow("Bottom right", spec.cornerBottomRight, 0f..36f, { onChange(spec.copy(cornerBottomRight = it)) }, " dp")
+        SwitchRow("Same on all four corners", spec.cornersLinked) { on ->
+            onChange(
+                if (on) spec.copy(
+                    cornersLinked = true,
+                    cornerTopRight = spec.cornerTopLeft,
+                    cornerBottomLeft = spec.cornerTopLeft,
+                    cornerBottomRight = spec.cornerTopLeft,
+                ) else spec.copy(cornersLinked = false),
+            )
+        }
+        if (spec.cornersLinked) {
+            SliderRow("All corners", spec.cornerTopLeft, 0f..36f, { v ->
+                onChange(
+                    spec.copy(
+                        cornerTopLeft = v, cornerTopRight = v,
+                        cornerBottomLeft = v, cornerBottomRight = v,
+                    ),
+                )
+            }, " dp")
+        } else {
+            SliderRow("Top left", spec.cornerTopLeft, 0f..36f, { onChange(spec.copy(cornerTopLeft = it)) }, " dp")
+            SliderRow("Top right", spec.cornerTopRight, 0f..36f, { onChange(spec.copy(cornerTopRight = it)) }, " dp")
+            SliderRow("Bottom left", spec.cornerBottomLeft, 0f..36f, { onChange(spec.copy(cornerBottomLeft = it)) }, " dp")
+            SliderRow("Bottom right", spec.cornerBottomRight, 0f..36f, { onChange(spec.copy(cornerBottomRight = it)) }, " dp")
+        }
     }
 }
 
@@ -272,7 +286,30 @@ private fun LayoutPage(spec: LayoutStyle, onChange: (LayoutStyle) -> Unit) {
 @Composable
 private fun KeysPage(spec: KeyStyle, palette: KeyboardPalette, onChange: (KeyStyle) -> Unit) {
     Panel("Shape & type") {
-        SliderRow("Corner radius", spec.radius, 0f..24f, { onChange(spec.copy(radius = it)) }, " dp")
+        SwitchRow("Same on all four key corners", spec.cornersLinked) { on ->
+            onChange(
+                if (on) spec.copy(
+                    cornersLinked = true,
+                    cornerTopLeft = spec.radius, cornerTopRight = spec.radius,
+                    cornerBottomLeft = spec.radius, cornerBottomRight = spec.radius,
+                ) else spec.copy(cornersLinked = false),
+            )
+        }
+        if (spec.cornersLinked) {
+            SliderRow("Corner radius", spec.radius, 0f..24f, { v ->
+                onChange(
+                    spec.copy(
+                        radius = v, cornerTopLeft = v, cornerTopRight = v,
+                        cornerBottomLeft = v, cornerBottomRight = v,
+                    ),
+                )
+            }, " dp")
+        } else {
+            SliderRow("Top left", spec.cornerTopLeft, 0f..24f, { onChange(spec.copy(cornerTopLeft = it)) }, " dp")
+            SliderRow("Top right", spec.cornerTopRight, 0f..24f, { onChange(spec.copy(cornerTopRight = it)) }, " dp")
+            SliderRow("Bottom left", spec.cornerBottomLeft, 0f..24f, { onChange(spec.copy(cornerBottomLeft = it)) }, " dp")
+            SliderRow("Bottom right", spec.cornerBottomRight, 0f..24f, { onChange(spec.copy(cornerBottomRight = it)) }, " dp")
+        }
         SliderRow("Text size", spec.textSize, 13f..26f, { onChange(spec.copy(textSize = it)) }, " sp")
         SliderRow("Border width", spec.borderWidth, 0f..3f, { onChange(spec.copy(borderWidth = it)) }, " dp", 1)
     }
@@ -288,6 +325,110 @@ private fun KeysPage(spec: KeyStyle, palette: KeyboardPalette, onChange: (KeySty
         ColorRow("Emoji", spec.emojiColor, palette.special) { onChange(spec.copy(emojiColor = it)) }
         ColorRow("Enter", spec.enterColor, palette.enter) { onChange(spec.copy(enterColor = it)) }
         ColorRow("Enter icon", spec.enterTextColor, palette.enterText) { onChange(spec.copy(enterTextColor = it)) }
+    }
+    Panel("Key image") {
+        ImageRow(
+            label = "Photo inside every key",
+            uri = spec.imageUri,
+            preferredRatio = 1f,
+        ) { onChange(spec.copy(imageUri = it)) }
+        if (spec.imageUri != null) {
+            AlphaRow("Image opacity", spec.imageAlpha, palette.text) { onChange(spec.copy(imageAlpha = it)) }
+        }
+    }
+    PerKeyPanel(spec, palette, onChange)
+}
+
+/**
+ * Pick a single key and give it its own colour, photo, sound or radius.
+ *
+ * The grid here is the real key set, so what the owner taps is exactly the label
+ * the keyboard will look up at runtime.
+ */
+@Composable
+private fun PerKeyPanel(
+    spec: KeyStyle,
+    palette: KeyboardPalette,
+    onChange: (KeyStyle) -> Unit,
+) {
+    var selected by remember { mutableStateOf<String?>(null) }
+    val labels = remember {
+        ("qwertyuiop" + "asdfghjkl" + "zxcvbnm").map { it.toString() } +
+            listOf("shift", "backspace", "?123", "emoji", "space", "enter", ".", ",")
+    }
+    Panel("One key on its own") {
+        Text(
+            text = if (selected == null) "Tap a key below to style just that key."
+            else "Editing \"${selected}\". Everything left on Auto follows the shared style.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        labels.chunked(10).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                row.forEach { k ->
+                    val on = k == selected
+                    val styled = spec.overrides[k]?.isEmpty == false
+                    val sh = RoundedCornerShape(7.dp)
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(32.dp)
+                            .clip(sh)
+                            .background(
+                                when {
+                                    on -> MaterialTheme.colorScheme.primary
+                                    styled -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                },
+                            )
+                            .clickable { selected = if (on) null else k },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (k.length <= 2) k.uppercase() else k.take(3),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (on) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                repeat(10 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+        selected?.let { k ->
+            val cur = spec.overrides[k] ?: KeyOverride()
+            fun put(next: KeyOverride) {
+                val map = spec.overrides.toMutableMap()
+                if (next.isEmpty) map.remove(k) else map[k] = next
+                onChange(spec.copy(overrides = map))
+            }
+            ColorRow("Key colour", cur.color, spec.keyColor ?: palette.key) { put(cur.copy(color = it)) }
+            ColorRow("Text colour", cur.textColor, spec.textColor ?: palette.text) { put(cur.copy(textColor = it)) }
+            ImageRow("Key photo", cur.imageUri, 1f) { put(cur.copy(imageUri = it)) }
+            if (cur.imageUri != null) {
+                AlphaRow("Photo opacity", cur.imageAlpha, palette.text) { put(cur.copy(imageAlpha = it)) }
+            }
+            SliderRow(
+                "Corner radius", if (cur.radius < 0f) spec.radius else cur.radius, 0f..24f,
+                { put(cur.copy(radius = it)) }, " dp",
+            )
+            SegmentRow(
+                label = "Sound",
+                options = listOf(-1, 0, 1, 2, 3, 4),
+                selected = if (cur.soundIndex in 0..4) cur.soundIndex else -1,
+                title = { if (it < 0) "Auto" else KeySounds.labels[it] },
+                onSelect = { put(cur.copy(soundIndex = it)) },
+            )
+            SegmentRow(
+                label = "More sounds",
+                options = listOf(5, 6, 7, 8, 9),
+                selected = if (cur.soundIndex in 5..9) cur.soundIndex else -1,
+                title = { KeySounds.labels[it] },
+                onSelect = { put(cur.copy(soundIndex = it)) },
+            )
+            TextButton(onClick = { put(KeyOverride()) }) { Text("Clear this key", fontSize = 11.sp) }
+        }
     }
 }
 
@@ -401,32 +542,3 @@ private fun SuggestionPage(
     }
 }
 
-// ---- page 6 ------------------------------------------------------------------
-
-@Composable
-private fun ArrowPage(spec: ArrowStyle, palette: KeyboardPalette, onChange: (ArrowStyle) -> Unit) {
-    Panel("Editing bar") {
-        SwitchRow("Show the arrow bar", spec.enabled) { onChange(spec.copy(enabled = it)) }
-        Text(
-            text = "Adds a row of cursor keys above the suggestion bar.",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        SliderRow("Height", spec.height, 30f..48f, { onChange(spec.copy(height = it)) }, " dp")
-        SliderRow("Corner radius", spec.radius, 0f..20f, { onChange(spec.copy(radius = it)) }, " dp")
-    }
-    Panel("Colour") {
-        ColorRow("Button colour", spec.color, palette.special) { onChange(spec.copy(color = it)) }
-        ColorRow("Icon colour", spec.iconColor, palette.text) { onChange(spec.copy(iconColor = it)) }
-    }
-    Panel("Tools") {
-        SwitchRow("Select all", spec.selectAll) { onChange(spec.copy(selectAll = it)) }
-        SwitchRow("Copy", spec.copy) { onChange(spec.copy(copy = it)) }
-        SwitchRow("Cut", spec.cut) { onChange(spec.copy(cut = it)) }
-        SwitchRow("Paste", spec.paste) { onChange(spec.copy(paste = it)) }
-        SwitchRow("Home / End", spec.homeEnd) { onChange(spec.copy(homeEnd = it)) }
-        SwitchRow("Bold", spec.bold) { onChange(spec.copy(bold = it)) }
-        SwitchRow("Italic", spec.italic) { onChange(spec.copy(italic = it)) }
-        SwitchRow("Underline", spec.underline) { onChange(spec.copy(underline = it)) }
-    }
-}
