@@ -34,6 +34,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.findViewTreeLifecycleOwner
@@ -84,7 +86,12 @@ class RekeyImeService :
     private lateinit var feedback: KeyFeedback
     private var systemDark by mutableStateOf(false)
     private var suggestions by mutableStateOf<List<String>>(emptyList())
-    private lateinit var predictor: WordPredictor
+    private lateinit var engine: SuggestionEngine
+    private lateinit var combiner: EmojiCombiner
+    private val io = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main,
+    )
+    private var suggestJob: kotlinx.coroutines.Job? = null
     private var destroyed = false
     private var navBottomPx by mutableIntStateOf(0)
     private var navLeftPx by mutableIntStateOf(0)
@@ -115,7 +122,14 @@ class RekeyImeService :
         savedStateController.performRestore(null)
         preferences = RekeyPreferences(this)
         feedback = KeyFeedback(this)
-        predictor = WordPredictor(this)
+        engine = SuggestionEngine(this)
+        combiner = EmojiCombiner(this)
+        io.launch {
+            // Both read assets; neither may block the first frame.
+            EmojiRepository.init(applicationContext)
+            engine.init()
+            updateSuggestions()
+        }
         moveLifecycle(Lifecycle.State.CREATED)
     }
 
@@ -281,7 +295,8 @@ class RekeyImeService :
         }
         store.clear()
         if (::feedback.isInitialized) feedback.release()
-        if (::predictor.isInitialized) predictor.flush()
+        if (::engine.isInitialized) io.launch { engine.flush() }
+        io.cancel()
     }
 
     private fun reloadTheme() {
@@ -367,6 +382,26 @@ class RekeyImeService :
                 floatY = 0f
                 return
             }
+            KeyAction.SWITCH_KEYBOARD -> {
+                (getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
+                    .showInputMethodPicker()
+                return
+            }
+            KeyAction.LONG_RELEASE -> {
+                // Sound and vibration belong to the release, not the press.
+                feedback.tap()
+                return
+            }
+            KeyAction.CURSOR -> {
+                val steps = text.toIntOrNull() ?: 0
+                repeat(kotlin.math.abs(steps)) {
+                    sendDownUpKeyEvents(
+                        if (steps < 0) KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT,
+                    )
+                }
+                updateSuggestions()
+                return
+            }
             KeyAction.LANGUAGE -> { switchToNextInputMethod(false); return }
             KeyAction.CYCLE_THEME -> { cycleTheme(); return }
             else -> Unit
@@ -378,7 +413,9 @@ class RekeyImeService :
                 if (action == KeyAction.SPACE) {
                     // The word that just ended is the strongest signal we get.
                     val before = ic.getTextBeforeCursor(48, 0)?.toString().orEmpty()
-                    predictor.learn(before.takeLastWhile { it.isLetter() || it == '\'' })
+                    val word = before.takeLastWhile { it.isLetter() || it == '\'' }
+                    val head = before.dropLast(word.length).trimEnd()
+                    engine.learn(head.takeLastWhile { it.isLetter() || it == '\'' }, word)
                 }
                 ic.commitText(text, 1)
                 updateSuggestions()
@@ -404,7 +441,8 @@ class RekeyImeService :
                 val before = ic.getTextBeforeCursor(48, 0)?.toString().orEmpty()
                 val prefix = before.takeLastWhile { it.isLetter() || it == '\'' }
                 if (prefix.isNotEmpty()) ic.deleteSurroundingText(prefix.length, 0)
-                predictor.learn(text)
+                val head = before.dropLast(prefix.length).trimEnd()
+                engine.learn(head.takeLastWhile { it.isLetter() || it == '\'' }, text)
                 ic.commitText("$text ", 1)
                 updateSuggestions()
             }
@@ -421,7 +459,8 @@ class RekeyImeService :
             KeyAction.BOLD -> sendCtrl(KeyEvent.KEYCODE_B)
             KeyAction.ITALIC -> sendCtrl(KeyEvent.KEYCODE_I)
             KeyAction.UNDERLINE -> sendCtrl(KeyEvent.KEYCODE_U)
-            KeyAction.LANGUAGE, KeyAction.CYCLE_THEME, KeyAction.HIDE, KeyAction.TOGGLE_FLOAT, KeyAction.SUGGEST -> Unit
+            KeyAction.LANGUAGE, KeyAction.CYCLE_THEME, KeyAction.HIDE, KeyAction.TOGGLE_FLOAT,
+            KeyAction.SUGGEST, KeyAction.SWITCH_KEYBOARD, KeyAction.LONG_RELEASE, KeyAction.CURSOR -> Unit
         }
     }
 
@@ -430,12 +469,18 @@ class RekeyImeService :
      * the caret or switching fields never leaves stale suggestions on screen.
      */
     private fun updateSuggestions() {
-        if (!::predictor.isInitialized) return
-        val before = currentInputConnection?.getTextBeforeCursor(48, 0)?.toString().orEmpty()
+        if (!::engine.isInitialized || destroyed) return
+        val before = currentInputConnection?.getTextBeforeCursor(64, 0)?.toString().orEmpty()
         val prefix = before.takeLastWhile { it.isLetter() || it == '\'' }
         val head = before.dropLast(prefix.length).trimEnd()
         val previous = head.takeLastWhile { it.isLetter() || it == '\'' }
-        suggestions = predictor.suggest(prefix, previous, 5)
+        // Typing fast must not queue a backlog of trie searches; only the newest
+        // prefix matters.
+        suggestJob?.cancel()
+        suggestJob = io.launch {
+            val n = style.suggestions.columns.coerceIn(3, 5)
+            suggestions = engine.suggest(previous, prefix, n).map { it.text }
+        }
     }
 
     /** Formatting shortcuts for editors that understand them. */

@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -48,6 +49,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shape
@@ -70,6 +74,9 @@ import io.github.lxzrvi.rekey.data.KeyboardStyle
 import io.github.lxzrvi.rekey.data.SuggestionStyle
 import io.github.lxzrvi.rekey.ui.brand.BrandTypography
 import io.github.lxzrvi.rekey.ui.components.Glyph
+import io.github.lxzrvi.rekey.ui.components.rememberUriImage
+import io.github.lxzrvi.rekey.ime.EmojiEntry
+import io.github.lxzrvi.rekey.ime.EmojiRepository
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -96,6 +103,26 @@ object KeyboardCanvas {
     const val CARD_RATIO = 440f / 265f
 
     const val OUTER = 7f
+
+    /**
+     * The height the board actually wants, in design dp.
+     *
+     * A preview box cannot assume a fixed ratio: the owner can change key
+     * height, padding, the suggestion strip and the grab handle. Squeezing the
+     * board into a stale ratio is what flattened the bottom row.
+     */
+    fun contentHeight(style: KeyboardStyle, showToolbar: Boolean, compact: Boolean): Float {
+        val lay = style.layout
+        val rowGap = if (compact) lay.rowGap * 0.875f else lay.rowGap
+        val keyH = (if (compact) 41f else 43f) * lay.heightScale
+        var h = lay.padTop + lay.padBottom + keyH * 4f + rowGap * 3f
+        if (style.suggestions.grabberEnabled) h += 18f
+        if (style.arrows.enabled) h += style.arrows.height + rowGap
+        if (showToolbar) {
+            h += (if (compact) style.suggestions.height * 0.95f else style.suggestions.height) + 6f + rowGap
+        }
+        return h.coerceAtLeast(120f)
+    }
 }
 
 private val Outer = KeyboardCanvas.OUTER.dp
@@ -116,7 +143,7 @@ val KeyboardPreviewSuggestions: List<String> = listOf("Hello", "Design", "Today"
 enum class KeyAction {
     TEXT, SPACE, ENTER, BACKSPACE, LANGUAGE, PASTE, CYCLE_THEME,
     LEFT, RIGHT, UP, DOWN, SELECT_ALL, COPY, CUT, HOME, END,
-    BOLD, ITALIC, UNDERLINE, HIDE, TOGGLE_FLOAT, SUGGEST,
+    BOLD, ITALIC, UNDERLINE, HIDE, TOGGLE_FLOAT, SUGGEST, SWITCH_KEYBOARD, LONG_RELEASE, CURSOR,
 }
 
 private enum class ShiftState { OFF, ON, CAPS }
@@ -161,6 +188,7 @@ fun RekeyKeyboard(
     var shift by remember { mutableStateOf(ShiftState.OFF) }
     var lastShiftTap by remember { mutableLongStateOf(0L) }
     var symbols by remember { mutableStateOf(false) }
+    var symbolPage by remember { mutableIntStateOf(0) }
 
     val view = LocalView.current
     val haptic: () -> Unit = remember(view, interactive, systemHaptic) {
@@ -246,7 +274,7 @@ fun RekeyKeyboard(
                     ArrowBar(style.arrows, ui, gap) { emit(it) }
                     Spacer(Modifier.height(rowGap))
                 }
-                if (showToolbar) {
+                if (showToolbar && !emoji) {
                     KeyboardToolbar(
                         p = p,
                         ui = ui,
@@ -270,8 +298,8 @@ fun RekeyKeyboard(
                 } else {
                     /* ROW 1 */
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                        (if (symbols) Symbols1 else Letters1).forEach { c ->
-                            CharKey(ui, label(c)) { onChar(c) }
+                        (if (symbols) SymbolPages.pages[symbolPage][0] else Letters1).forEach { c ->
+                            CharKey(ui, label(c), onPress = { onChar(c) }, onAlternate = { emit(KeyAction.TEXT, it) })
                         }
                     }
                     Spacer(Modifier.height(rowGap))
@@ -281,8 +309,8 @@ fun RekeyKeyboard(
                         Modifier.fillMaxWidth().padding(horizontal = inner * 0.05f),
                         horizontalArrangement = Arrangement.spacedBy(gap),
                     ) {
-                        (if (symbols) Symbols2 else Letters2).forEach { c ->
-                            CharKey(ui, label(c)) { onChar(c) }
+                        (if (symbols) SymbolPages.pages[symbolPage][1] else Letters2).forEach { c ->
+                            CharKey(ui, label(c), onPress = { onChar(c) }, onAlternate = { emit(KeyAction.TEXT, it) })
                         }
                     }
                     Spacer(Modifier.height(rowGap))
@@ -290,8 +318,11 @@ fun RekeyKeyboard(
                     /* ROW 3 */
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                         if (symbols) {
-                            SpecialKey(ui, 1.45f, bg = ui.st.keys.numberColor, onPress = { symbols = false }) {
-                                SpecialText(ui, "=<")
+                            SpecialKey(
+                                ui, 1.45f, bg = ui.st.keys.numberColor,
+                                onPress = { symbolPage = (symbolPage + 1) % SymbolPages.PAGE_COUNT },
+                            ) {
+                                SpecialText(ui, "${symbolPage + 1}/${SymbolPages.PAGE_COUNT}")
                             }
                         } else {
                             SpecialKey(ui, 1.45f, bg = ui.st.keys.shiftColor, onPress = {
@@ -317,11 +348,19 @@ fun RekeyKeyboard(
                                 )
                             }
                         }
-                        (if (symbols) Symbols3 else Letters3).forEach { c ->
-                            CharKey(ui, label(c)) { onChar(c) }
+                        (if (symbols) SymbolPages.pages[symbolPage][2].take(7) else Letters3).forEach { c ->
+                            CharKey(ui, label(c), onPress = { onChar(c) }, onAlternate = { emit(KeyAction.TEXT, it) })
                         }
                         SpecialKey(ui, 1.45f, repeat = true, onPress = { emit(KeyAction.BACKSPACE) }) {
                             RekeyGlyph(Glyph.BACKSPACE, ui.textColor, Modifier.size(19.dp))
+                        }
+                    }
+                    if (symbols) {
+                        Spacer(Modifier.height(rowGap))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                            SymbolPages.pages[symbolPage][3].forEach { c ->
+                                CharKey(ui, c, onPress = { onChar(c) }, onAlternate = { emit(KeyAction.TEXT, it) })
+                            }
                         }
                     }
                 }
@@ -334,7 +373,7 @@ fun RekeyKeyboard(
                             haptic()
                             when {
                                 emoji -> emoji = false
-                                symbols -> symbols = false
+                                symbols -> { symbols = false; symbolPage = 0 }
                                 else -> symbols = true
                             }
                             shift = ShiftState.OFF
@@ -361,6 +400,8 @@ fun RekeyKeyboard(
                         shape = ui.keyShape,
                         interactive = interactive,
                         onHaptic = haptic,
+                        cursorSwipe = interactive,
+                        onCursor = { emit(KeyAction.CURSOR, it.toString()) },
                         onPress = { emit(KeyAction.SPACE, " ") },
                     ) {
                         Text(
@@ -589,9 +630,27 @@ private fun EmojiPanel(
     onBackspace: () -> Unit,
 ) {
     var group by remember { mutableIntStateOf(0) }
-    val panelH = ui.keyH * 3 + rowGap * 2
     val railH = 30.dp
-    Column(Modifier.fillMaxWidth().height(panelH)) {
+    val cats = EmojiRepository.categories
+    val ready = EmojiRepository.isReady && cats.isNotEmpty()
+    // Grow from the letter-board height to five rows instead of snapping, so
+    // opening emoji does not make the whole window jump.
+    var tall by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { tall = true }
+    val rowsHigh by animateDpAsState(
+        targetValue = if (tall) ui.keyH * 5 + rowGap * 4 else ui.keyH * 3 + rowGap * 2,
+        animationSpec = tween(240),
+        label = "emojiGrow",
+    )
+    val entries: List<EmojiEntry> =
+        if (ready) cats[group.coerceIn(0, cats.lastIndex)].items
+        else EmojiGroups[group.coerceIn(0, EmojiGroups.lastIndex)].items.map {
+            EmojiEntry(it, "", emptyList())
+        }
+    val titles: List<String> =
+        if (ready) cats.map { it.title } else EmojiGroups.map { it.title }
+
+    Column(Modifier.fillMaxWidth().height(rowsHigh + railH + rowGap)) {
         Row(
             Modifier.fillMaxWidth().height(railH),
             verticalAlignment = Alignment.CenterVertically,
@@ -602,10 +661,10 @@ private fun EmojiPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
-                EmojiGroups.forEachIndexed { i, g ->
+                titles.forEachIndexed { i, t ->
                     val on = i == group
                     KeyBox(
-                        modifier = Modifier.width(38.dp).height(railH),
+                        modifier = Modifier.width(40.dp).height(railH),
                         bg = if (on) ui.specialBg else Color.Transparent,
                         pressedBg = ui.specialBg,
                         shape = RoundedCornerShape(8.dp),
@@ -613,7 +672,7 @@ private fun EmojiPanel(
                         onHaptic = ui.haptic,
                         onPress = { group = i },
                     ) {
-                        RekeyGlyph(g.icon, if (on) p.enter else ui.textColor, Modifier.size(16.dp))
+                        RekeyGlyph(emojiGlyph(t), if (on) p.enter else ui.textColor, Modifier.size(16.dp))
                     }
                 }
             }
@@ -630,30 +689,56 @@ private fun EmojiPanel(
         }
         Spacer(Modifier.height(rowGap))
         Column(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(remember(group) { ScrollState(0) }),
+            Modifier.fillMaxWidth().weight(1f).verticalScroll(remember(group) { ScrollState(0) }),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            EmojiGroups[group].items.chunked(8).forEach { row ->
+            entries.chunked(8).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     row.forEach { e ->
+                        var popup by remember(e.char) { mutableStateOf(false) }
+                        var bounds by remember { mutableStateOf(Rect.Zero) }
                         KeyBox(
-                            modifier = Modifier.weight(1f).height(ui.keyH),
+                            modifier = Modifier.weight(1f).height(ui.keyH)
+                                .onGloballyPositioned { bounds = it.boundsInWindow() },
                             bg = Color.Transparent,
                             pressedBg = ui.specialBg,
                             shape = ui.keyShape,
                             interactive = ui.interactive,
                             onHaptic = ui.haptic,
-                            onPress = { onPick(e) },
-                        ) { Text(text = e, fontSize = 22.sp, lineHeight = 26.sp, maxLines = 1) }
+                            onLongPress = if (e.variants.isEmpty() || !ui.interactive) null else {
+                                { popup = true }
+                            },
+                            onLongRelease = {{ popup = false }},
+                            onPress = { onPick(e.char) },
+                        ) { Text(text = e.char, fontSize = 22.sp, lineHeight = 26.sp, maxLines = 1) }
+                        if (popup) {
+                            AlternatesPopup(
+                                anchor = bounds,
+                                options = e.variants,
+                                selected = -1,
+                                onPick = { popup = false; onPick(it) },
+                                onDismiss = { popup = false },
+                            )
+                        }
                     }
                     repeat(8 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
     }
+}
+
+/** Unicode group name -> one of our existing glyphs. */
+private fun emojiGlyph(title: String): Glyph = when {
+    title.startsWith("Smileys") -> Glyph.SMILEY
+    title.startsWith("People") -> Glyph.CAPS_ON
+    title.startsWith("Animals") -> Glyph.GLOBE
+    title.startsWith("Food") -> Glyph.KEYBOARD_TEXT
+    title.startsWith("Travel") -> Glyph.CHEVRON_RIGHT
+    title.startsWith("Activities") -> Glyph.TRANSLATE
+    title.startsWith("Objects") -> Glyph.PASTE
+    title.startsWith("Flags") -> Glyph.CHECK
+    else -> Glyph.PALETTE
 }
 
 /** Toolbar: suggestion strip on the left, expanding action pill on the right. */
@@ -784,24 +869,72 @@ private fun animatedPalette(t: KeyboardPalette): KeyboardPalette {
 }
 
 @Composable
-private fun RowScope.CharKey(ui: Ui, label: String, onPress: () -> Unit) {
+private fun RowScope.CharKey(
+    ui: Ui,
+    label: String,
+    onPress: () -> Unit,
+    onAlternate: (String) -> Unit = { _ -> },
+) {
+    val key = label.lowercase()
+    val over = ui.st.keys.overrides[key]
+    val upper = label != key && label.any { it.isUpperCase() }
+    val alternates = remember(key, upper) { KeyHints.alternatesFor(key, upper) }
+    val hint = remember(key) { KeyHints.hintFor(key) }
+    var popup by remember { mutableStateOf(false) }
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    val photo = rememberUriImage(over?.imageUri ?: ui.st.keys.imageUri, 256)
+    val shape = over?.radius?.takeIf { it >= 0f }
+        ?.let { RoundedCornerShape(it.dp) } ?: ui.keyShape
+
     KeyBox(
-        modifier = Modifier.weight(1f).height(ui.keyH),
-        bg = ui.keyBg,
+        modifier = Modifier
+            .weight(1f)
+            .height(ui.keyH)
+            .onGloballyPositioned { bounds = it.boundsInWindow() },
+        bg = over?.color ?: ui.keyBg,
         pressedBg = ui.specialBg,
         border = ui.borderCol,
         borderWidth = ui.borderW,
-        shape = ui.keyShape,
+        shape = shape,
         interactive = ui.interactive,
         onHaptic = ui.haptic,
+        onLongPress = if (alternates.isEmpty() || !ui.interactive) null else {
+            { popup = true }
+        },
+        onLongRelease = {{ popup = false }},
         onPress = onPress,
     ) {
+        if (photo != null) {
+            Image(
+                photo, null, Modifier.matchParentSize().clip(shape),
+                contentScale = ContentScale.Crop,
+                alpha = over?.imageAlpha ?: ui.st.keys.imageAlpha,
+            )
+        }
         Text(
             text = label,
-            color = ui.textColor,
+            color = over?.textColor ?: ui.textColor,
             fontSize = ui.fs.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
+        )
+        if (hint != null) {
+            Text(
+                text = hint,
+                color = (over?.textColor ?: ui.textColor).copy(alpha = 0.45f),
+                fontSize = (ui.fs * 0.42f).sp,
+                maxLines = 1,
+                modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp),
+            )
+        }
+    }
+    if (popup) {
+        AlternatesPopup(
+            anchor = bounds,
+            options = alternates,
+            selected = -1,
+            onPick = { popup = false; ui.haptic(); onAlternate(it) },
+            onDismiss = { popup = false },
         )
     }
 }
@@ -869,6 +1002,13 @@ private fun KeyBox(
     repeatOnHold: Boolean = false,
     interactive: Boolean = true,
     onHaptic: () -> Unit = {},
+    /** Held past the long-press timeout. Null disables the long press. */
+    onLongPress: (() -> Unit)? = null,
+    /** Fired when a long press is released, so sound lands on the release. */
+    onLongRelease: (() -> Unit)? = null,
+    /** Horizontal drag moves the caret instead of typing. Used by the space bar. */
+    cursorSwipe: Boolean = false,
+    onCursor: (Int) -> Unit = {},
     onPress: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -888,7 +1028,8 @@ private fun KeyBox(
     } else {
         InteractiveKey(
             modifier, bg, pressedBg, border, borderWidth, shape, pressedScale,
-            repeatOnHold, onHaptic, onPress, content,
+            repeatOnHold, onHaptic, onLongPress, onLongRelease, cursorSwipe, onCursor,
+            onPress, content,
         )
     }
 }
@@ -904,6 +1045,10 @@ private fun InteractiveKey(
     pressedScale: Float,
     repeatOnHold: Boolean,
     onHaptic: () -> Unit,
+    onLongPress: (() -> Unit)?,
+    onLongRelease: (() -> Unit)?,
+    cursorSwipe: Boolean,
+    onCursor: (Int) -> Unit,
     onPress: () -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -928,23 +1073,61 @@ private fun InteractiveKey(
                     Modifier.border(borderWidth, border, shape)
                 } else Modifier,
             )
-            .pointerInput(repeatOnHold) {
+            .pointerInput(repeatOnHold, cursorSwipe) {
+                if (cursorSwipe) {
+                    // The space bar is a trackpad: every 18 px of travel is one
+                    // caret step, and a tap still types a space.
+                    var acc = 0f
+                    var travel = 0f
+                    detectDragGestures(
+                        onDragStart = { acc = 0f; travel = 0f; pressed = true },
+                        onDragEnd = { pressed = false },
+                        onDragCancel = { pressed = false },
+                    ) { change, drag ->
+                        change.consume()
+                        travel += kotlin.math.abs(drag.x) + kotlin.math.abs(drag.y)
+                        acc += drag.x
+                        val step = 18f
+                        while (kotlin.math.abs(acc) >= step) {
+                            val dir = if (acc > 0) 1 else -1
+                            onCursor(dir)
+                            currentHaptic()
+                            acc -= dir * step
+                        }
+                    }
+                }
+            }
+            .pointerInput(repeatOnHold, cursorSwipe, onLongPress != null) {
                 detectTapGestures(onPress = {
                     pressed = true
-                    currentHaptic()
-                    currentPress()
-                    val job = if (repeatOnHold) {
-                        scope.launch {
+                    var longFired = false
+                    // Nothing is typed on the way down. A finger that only
+                    // brushes the board, or slides off to the next key, must
+                    // stay silent; only a real release commits.
+                    val job = scope.launch {
+                        if (repeatOnHold) {
                             delay(400)
+                            currentPress()
                             while (isActive) {
-                                currentPress()
                                 delay(50)
+                                currentPress()
                             }
+                        } else if (onLongPress != null) {
+                            delay(android.view.ViewConfiguration.getLongPressTimeout().toLong())
+                            longFired = true
+                            currentHaptic()
+                            onLongPress.invoke()
                         }
-                    } else null
-                    tryAwaitRelease()
-                    job?.cancel()
+                    }
+                    val released = tryAwaitRelease()
+                    job.cancel()
                     pressed = false
+                    if (released) {
+                        when {
+                            longFired -> onLongRelease?.invoke() ?: currentPress()
+                            else -> currentPress()
+                        }
+                    }
                 })
             },
         contentAlignment = Alignment.Center,
@@ -972,14 +1155,23 @@ fun ScaledKeyboard(
     suggestions: List<String> = emptyList(),
     onKey: (KeyAction, String) -> Unit = { _, _ -> },
 ) {
-    BoxWithConstraints(modifier) {
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
         val base = LocalDensity.current
-        val scale = maxWidth.value / KeyboardCanvas.WIDTH_VALUE
+        val byWidth = maxWidth.value / KeyboardCanvas.WIDTH_VALUE
+        val natural = KeyboardCanvas.contentHeight(style, showToolbar, maxWidth.value < 350f)
+        // Fit, never squash. When the box is shorter than the board wants, the
+        // whole keyboard scales down uniformly instead of the last row being
+        // compressed to make up the difference.
+        val byHeight =
+            if (maxHeight.value.isFinite() && maxHeight.value > 0f) maxHeight.value / natural
+            else byWidth
+        val scale = minOf(byWidth, byHeight)
         CompositionLocalProvider(
             LocalDensity provides Density(base.density * scale, base.fontScale),
         ) {
             RekeyKeyboard(
                 palette = palette,
+                modifier = Modifier.width(KeyboardCanvas.WIDTH),
                 style = style,
                 backgroundImage = backgroundImage,
                 showToolbar = showToolbar,
