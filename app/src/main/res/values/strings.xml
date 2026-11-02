@@ -34,6 +34,11 @@
     <string name="setup_continue">Continue</string>
     <string name="setup_skip">Skip for now</string>
     <string name="setup_step_index">Step %1$d of 2</string>
+    <string name="setup_float_title">Float over other apps</string>
+    <string name="setup_float_body">Optional. Double tap the keyboard\'s handle to lift it anywhere on the screen. You can allow this later from the keyboard itself.</string>
+    <string name="setup_mic_title">Voice typing</string>
+    <string name="setup_mic_body">Optional. Speak and REKEY types it for you, using your phone\'s speech recognizer.</string>
+    <string name="setup_allow_mic">Allow microphone</string>
 
     <!-- Preset editor -->
     <string name="editor_title">Preset</string>
@@ -47,7 +52,11 @@
     <string name="reset_keyboards_done">Default layouts restored</string>
     <string name="test_keyboard_hint">Test your keyboard</string>
     <string name="ime_name">REKEY</string>
-    <string name="ime_subtype">English (US)</string>
+    <string name="ime_subtype">English</string>
+    <string name="ime_subtype_hi">Hindi</string>
+    <string name="ime_subtype_zh">Chinese</string>
+    <string name="ime_subtype_es">Spanish</string>
+    <string name="ime_subtype_ar">Arabic</string>
     <string name="editor_details_label">Details</string>
     <string name="editor_details_placeholder">Add a short description</string>
     <string name="notice_default_preset">Can\'t remove default presets</string>

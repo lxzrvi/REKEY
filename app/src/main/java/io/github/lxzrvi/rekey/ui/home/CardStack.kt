@@ -70,6 +70,7 @@ import androidx.compose.ui.zIndex
 import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.KeyboardPalettes
 import io.github.lxzrvi.rekey.data.KeyboardPreset
+import io.github.lxzrvi.rekey.data.KeyboardStyle
 import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.design.MotionContract
 import io.github.lxzrvi.rekey.ui.components.Glyph
@@ -288,9 +289,31 @@ fun CardStack(
 
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         BoxWithConstraints(Modifier.fillMaxWidth().zIndex(2f).testTag("card_stack")) {
-            val cardW = minOf(maxWidth * 0.86f, 420.dp)
-            val cardH = cardW / KeyboardCanvas.CARD_RATIO
+            val baseW = minOf(maxWidth * 0.86f, 420.dp)
             val density = LocalDensity.current
+
+            // The card IS the keyboard: its width follows the layout's width
+            // scale and its height is the height the board actually wants, so
+            // what you set is what every host of this card draws.
+            fun sizeFor(p: KeyboardPreset): Pair<Dp, Dp> {
+                val w = baseW * p.style.layout.widthScale
+                val natural = KeyboardCanvas.contentHeight(
+                    p.style, showToolbar = true, compact = w < 350.dp,
+                )
+                return w to (w * (natural / KeyboardCanvas.WIDTH_VALUE))
+            }
+
+            val liveNow = presets.filter { !stateFor(it).gone }
+            var maxH = 0.dp
+            liveNow.forEach { maxH = maxOf(maxH, sizeFor(it).second) }
+            val addNatural = KeyboardCanvas.contentHeight(
+                KeyboardStyle(), showToolbar = true, compact = baseW < 350.dp,
+            )
+            val addH = baseW * (addNatural / KeyboardCanvas.WIDTH_VALUE)
+            maxH = maxOf(maxH, addH)
+
+            val curPreset = liveNow.getOrNull(target)
+            val (cardW, cardH) = curPreset?.let { sizeFor(it) } ?: (baseW to addH)
             val wPx = with(density) { cardW.toPx() }
             val hPx = with(density) { cardH.toPx() }
             cardHPxHolder[0] = hPx
@@ -314,16 +337,17 @@ fun CardStack(
                     onLiveDrag(null)
                     return
                 }
+                val (lw, lh) = sizeFor(p)
                 onLiveDrag(
                     LiveDrag(
                         preset = p,
                         layoutNumber = (presets.indexOfFirst { it.id == p.id } + 1).coerceAtLeast(1),
-                        shape = cardShapeFor(p.style.layout, cardW.value / KeyboardCanvas.WIDTH_VALUE),
+                        shape = cardShapeFor(p.style.layout, lw.value / KeyboardCanvas.WIDTH_VALUE),
                         left = item.bounds.left,
                         top = item.bounds.top - item.offsetY,
                         width = item.layoutW.takeIf { it > 0f } ?: item.bounds.width,
                         height = item.layoutH.takeIf { it > 0f } ?: item.bounds.height,
-                        hPx = hPx,
+                        hPx = with(density) { lh.toPx() },
                         offsetY = { item.offsetY },
                     ),
                 )
@@ -350,7 +374,7 @@ fun CardStack(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(cardH + 24.dp)
+                    .height(maxH + 24.dp)
                     .draggable(
                         state = dragState,
                         orientation = Orientation.Horizontal,
@@ -458,17 +482,18 @@ fun CardStack(
                                     else -> 0f
                                 }
                             }
+                            val (pw, ph) = sizeFor(p)
                             StackCard(
                                 slotIndex = idx,
                                 pos = { pos },
-                                wPx = wPx,
-                                hPx = hPx,
-                                w = cardW,
-                                h = cardH,
+                                wPx = with(density) { pw.toPx() },
+                                hPx = with(density) { ph.toPx() },
+                                w = pw,
+                                h = ph,
                                 animateIn = item.animateIn,
                                 onEntered = { item.animateIn = false },
                                 hidden = { item.overlay },
-                                shape = cardShapeFor(p.style.layout, cardW.value / KeyboardCanvas.WIDTH_VALUE),
+                                shape = cardShapeFor(p.style.layout, pw.value / KeyboardCanvas.WIDTH_VALUE),
                                 offsetY = { item.offsetY },
                                 slideOut = side * ep,
                                 onBounds = { rect, w, h ->
@@ -506,9 +531,9 @@ fun CardStack(
                         slotIndex = n,
                         pos = { pos },
                         wPx = wPx,
-                        hPx = hPx,
-                        w = cardW,
-                        h = cardH,
+                        hPx = with(density) { addH.toPx() },
+                        w = baseW,
+                        h = addH,
                         animateIn = false,
                         onEntered = {},
                         hidden = { false },
@@ -621,13 +646,24 @@ fun CardStack(
                     textAlign = TextAlign.Center,
                 )
             }
+            Spacer(Modifier.height(6.dp))
             if (current != null) {
-                Spacer(Modifier.height(6.dp))
-                FrostedCross(
+                FrostedDisc(
+                    glyph = Glyph.CROSS,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     paletteCanvas = MaterialTheme.colorScheme.surface,
                     description = stringResource(R.string.remove_card_description, currentNumber),
                     onClick = { removePreset(current) },
+                )
+            } else {
+                // The new card gets a + in the same spot the presets get their
+                // X, and it adds a layout.
+                FrostedDisc(
+                    glyph = Glyph.PLUS,
+                    tint = MaterialTheme.colorScheme.primary,
+                    paletteCanvas = MaterialTheme.colorScheme.surface,
+                    description = stringResource(R.string.add_card_description),
+                    onClick = { onAdd() },
                 )
             }
         }
@@ -709,7 +745,8 @@ private fun StackCard(
                 )
             }
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
+            // No painted fill: the board crops its own corners, so what shows
+            // through them is whatever is actually behind the card.
             .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -757,9 +794,10 @@ fun PresetCardFace(
     }
 }
 
-/** The X: a live-blurred frosted disc with a translucent fallback wash. */
+/** The disc under the caption: X for a preset, + for the add card. */
 @Composable
-private fun FrostedCross(
+private fun FrostedDisc(
+    glyph: Glyph,
     tint: Color,
     paletteCanvas: Color,
     description: String,
@@ -785,7 +823,7 @@ private fun FrostedCross(
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        RekeyGlyph(Glyph.CROSS, tint, Modifier.size(15.dp))
+        RekeyGlyph(glyph, tint, Modifier.size(15.dp))
     }
 }
 
@@ -814,7 +852,6 @@ fun LiveDragLayer(drag: LiveDrag) {
                     rotationZ = if (d > 0f) 0f else (d / drag.hPx).coerceIn(-1f, 1f) * 3f
                 }
                 .clip(drag.shape)
-                .background(MaterialTheme.colorScheme.surface)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), drag.shape),
         ) {
             PresetCardFace(drag.preset)
@@ -863,7 +900,6 @@ fun FlyingCardLayer(card: FlyingCard, onFinished: () -> Unit) {
                     rotationZ = card.rotation * (1f + 0.6f * p)
                 }
                 .clip(card.shape)
-                .background(MaterialTheme.colorScheme.surface)
                 .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), card.shape),
         ) {
             PresetCardFace(card.preset)

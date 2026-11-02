@@ -138,14 +138,9 @@ fun HomeScreen(
 
     var appLanguage by remember { mutableStateOf(preferences.loadAppLanguage()) }
 
-    val testProgress by animateFloatAsState(
-        targetValue = if (testMode) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = if (testMode) MotionContract.TEST_ENTER_MILLIS else MotionContract.TEST_EXIT_MILLIS,
-            easing = FastOutSlowInEasing,
-        ),
-        label = "testProgress",
-    )
+    // The tester travels with the keyboard itself: WindowInsets.ime is
+    // animated by the system, so the field rises and falls at exactly the
+    // speed the keyboard opens and closes, whatever that speed happens to be.
 
     // The anchor is kept after closing so the card can animate back into place.
     val editingPreset = presets.firstOrNull { it.id == anchor?.presetId }
@@ -174,21 +169,24 @@ fun HomeScreen(
         }
     }
 
-    // Ask for the IME only after the field has slid up under the header. Asking
-    // while it is still travelling made the request land on a moving target and
-    // the keyboard frequently never appeared.
+    // The field itself stays put until the keyboard starts opening; the inset
+    // drives the travel, so the IME can be asked for straight away.
     LaunchedEffect(testMode) {
         if (testMode) {
-            delay(MotionContract.TEST_ENTER_MILLIS.toLong())
+            delay(60)
             runCatching { testFocus.requestFocus() }
             keyboard?.show()
         }
     }
 
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val testProgressNow =
+        if (presetsHeightPx > 0f) (imeBottomPx / presetsHeightPx).coerceIn(0f, 1f) else 0f
+
     // The system consumes the first back press to hide the IME, so the app's
     // BackHandler never sees it. Watching the IME inset instead means that same
     // single press also leaves test mode and lands on the main page.
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val imeVisible = imeBottomPx > 0
     var imeSeen by remember { mutableStateOf(false) }
     LaunchedEffect(testMode, imeVisible) {
         if (!testMode) {
@@ -240,8 +238,8 @@ fun HomeScreen(
                                 .fillMaxWidth()
                                 .onSizeChanged { presetsHeightPx = it.height.toFloat() }
                                 .graphicsLayer {
-                                    translationY = -presetsHeightPx * 0.22f * testProgress
-                                    alpha = (1f - testProgress * 1.35f).coerceIn(0f, 1f) * (1f - editorProgress)
+                                    translationY = -presetsHeightPx * 0.22f * testProgressNow
+                                    alpha = (1f - testProgressNow * 1.35f).coerceIn(0f, 1f) * (1f - editorProgress)
                                 },
                         ) {
                             Column(Modifier.fillMaxWidth()) {
@@ -296,7 +294,7 @@ fun HomeScreen(
                                     onNotice = { notice.show(it) },
                                 )
                             }
-                            if (testProgress > 0.5f) {
+                            if (testProgressNow > 0.5f) {
                                 Box(
                                     Modifier
                                         .matchParentSize()
@@ -320,8 +318,8 @@ fun HomeScreen(
                                 .padding(start = 20.dp, end = 20.dp, top = 18.dp)
                                 .graphicsLayer {
                                     // Slides up into the space the presets vacated,
-                                    // landing just under the header.
-                                    translationY = -presetsHeightPx * testProgress
+                                    // at the keyboard's own speed.
+                                    translationY = -presetsHeightPx * testProgressNow
                                 },
                         )
                         QuickBoxes(
@@ -343,8 +341,8 @@ fun HomeScreen(
                             modifier = Modifier
                                 .padding(start = 20.dp, end = 20.dp, top = 12.dp)
                                 .graphicsLayer {
-                                    translationY = -presetsHeightPx * testProgress
-                                    alpha = 1f - testProgress
+                                    translationY = -presetsHeightPx * testProgressNow
+                                    alpha = 1f - testProgressNow
                                 },
                         )
                     }
@@ -375,10 +373,12 @@ fun HomeScreen(
                     .zIndex(30f)
                     .graphicsLayer { alpha = editorProgress }
                     .liveBlur(blurState, fullScreenBlur(blurRadius))
+                    // Tapping empty space in the editor does nothing: leaving
+                    // is the back button, Okay, or the wizard's Done.
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { closeEditor() },
+                        onClick = {},
                     ),
             )
             PresetEditor(

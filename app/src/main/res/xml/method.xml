@@ -7,4 +7,24 @@
         android:imeSubtypeLocale="en_US"
         android:imeSubtypeMode="keyboard"
         android:isAuxiliary="false" />
+    <subtype
+        android:label="@string/ime_subtype_hi"
+        android:imeSubtypeLocale="hi_IN"
+        android:imeSubtypeMode="keyboard"
+        android:isAuxiliary="false" />
+    <subtype
+        android:label="@string/ime_subtype_zh"
+        android:imeSubtypeLocale="zh_CN"
+        android:imeSubtypeMode="keyboard"
+        android:isAuxiliary="false" />
+    <subtype
+        android:label="@string/ime_subtype_es"
+        android:imeSubtypeLocale="es_ES"
+        android:imeSubtypeMode="keyboard"
+        android:isAuxiliary="false" />
+    <subtype
+        android:label="@string/ime_subtype_ar"
+        android:imeSubtypeLocale="ar_EG"
+        android:imeSubtypeMode="keyboard"
+        android:isAuxiliary="false" />
 </input-method>

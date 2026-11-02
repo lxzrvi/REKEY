@@ -278,22 +278,33 @@ internal fun QuickBoxes(
     var pending by remember { mutableStateOf<AppLanguage?>(null) }
     val current = TopLanguages.firstOrNull { it.tag == language } ?: TopLanguages.first()
 
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        QuickBox(
-            modifier = Modifier.weight(1f),
-            glyph = Glyph.GLOBE,
-            title = "Language",
-            value = current.native,
-            onClick = { choosing = true },
-        )
-        listOf("Soon", "Soon", "Soon").forEach {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            QuickBox(
+                modifier = Modifier.weight(1f),
+                glyph = Glyph.GLOBE,
+                title = "Language",
+                value = current.native,
+                onClick = { choosing = true },
+            )
             QuickBox(
                 modifier = Modifier.weight(1f),
                 glyph = Glyph.PALETTE,
-                title = it,
+                title = "Theme",
                 value = "—",
                 onClick = {},
             )
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("Sounds" to Glyph.CLIPBOARD, "Layout" to Glyph.KEYBOARD_TEXT).forEach { (t, g) ->
+                QuickBox(
+                    modifier = Modifier.weight(1f),
+                    glyph = g,
+                    title = t,
+                    value = "—",
+                    onClick = {},
+                )
+            }
         }
     }
 

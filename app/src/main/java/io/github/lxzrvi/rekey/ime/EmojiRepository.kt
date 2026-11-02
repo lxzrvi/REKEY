@@ -1,8 +1,11 @@
 package io.github.lxzrvi.rekey.ime
 
 import android.content.Context
+import android.os.Build
+import androidx.compose.runtime.mutableStateListOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 
 /** One emoji plus the skin-tone variants that belong to it. */
 data class EmojiEntry(val char: String, val name: String, val variants: List<String>)
@@ -41,10 +44,52 @@ object EmojiRepository {
 
     private var byBase: Map<String, EmojiEntry> = emptyMap()
     private var byWord: Map<String, String> = emptyMap()
+    private var appContext: Context? = null
+
+    /**
+     * Glyphs newer than the device's font render as tofu boxes. The parser
+     * reads the E-version from emoji-test.txt and drops anything the current
+     * Android release cannot draw, so the grid only ever shows real emoji.
+     */
+    private val maxEmojiVersion: Float = when (Build.VERSION.SDK_INT) {
+        31, 32 -> 13.0f
+        33 -> 14.0f
+        34 -> 15.0f
+        35 -> 16.0f
+        else -> 99f
+    }
+
+    /** Most-recently-used emoji, newest first. Survives IME restarts. */
+    private val recentState = mutableStateListOf<String>()
+    val recent: List<String> get() = recentState
+
+    private const val RECENT_CAP = 36
+
+    fun pushRecent(emoji: String) {
+        if (emoji.isBlank()) return
+        recentState.remove(emoji)
+        recentState.add(0, emoji)
+        while (recentState.size > RECENT_CAP) recentState.removeAt(recentState.lastIndex)
+        runCatching {
+            appContext?.getSharedPreferences("rekey_emoji", Context.MODE_PRIVATE)
+                ?.edit()?.putString("recent", JSONArray(recentState).toString())?.apply()
+        }
+    }
 
     /** Idempotent. Safe to call from both the app and the IME. */
     suspend fun init(context: Context) = withContext(Dispatchers.IO) {
         if (loaded) return@withContext
+        appContext = context.applicationContext
+        runCatching {
+            context.getSharedPreferences("rekey_emoji", Context.MODE_PRIVATE)
+                .getString("recent", null)?.let { raw ->
+                    val arr = JSONArray(raw)
+                    for (i in 0 until arr.length()) {
+                        val e = arr.optString(i, "")
+                        if (e.isNotBlank()) recentState.add(e)
+                    }
+                }
+        }
         val groups = LinkedHashMap<String, MutableList<EmojiEntry>>()
         val zwj = ArrayList<String>()
         // base sequence -> its skin-toned siblings, in tone order
@@ -73,7 +118,11 @@ object EmojiRepository {
                     val text = buildString { cps.forEach { appendCodePoint(it) } }
                     // The comment is "<emoji> E<version> <name>".
                     val comment = line.substring(hash + 1).trim()
-                    val name = comment.substringAfter(' ').substringAfter(' ').trim()
+                    // "<emoji> E<version> <name>" — skip glyphs this OS font lacks.
+                    val afterEmoji = comment.substringAfter(' ')
+                    val version = afterEmoji.removePrefix("E").substringBefore(' ').toFloatOrNull() ?: 0f
+                    if (version > maxEmojiVersion) continue
+                    val name = afterEmoji.substringAfter(' ').trim()
 
                     if (cps.contains(ZWJ.code)) zwj += text
 

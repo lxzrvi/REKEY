@@ -24,8 +24,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,18 +56,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.roundToInt
-
-/** Ratios the app actually asks an image to fill. */
-private data class Ratio(val label: String, val value: Float?)
-
-private val Ratios = listOf(
-    Ratio("Free", null),
-    Ratio("Board 5:3", 5f / 3f),
-    Ratio("Wide 16:9", 16f / 9f),
-    Ratio("Key 1:1", 1f),
-    Ratio("Photo 4:3", 4f / 3f),
-    Ratio("Strip 3:1", 3f),
-)
 
 /**
  * Pick an image, then crop it before it is stored.
@@ -177,6 +163,7 @@ private fun CropDialog(
     var bottom by remember { mutableFloatStateOf(0.92f) }
     var ratio by remember { mutableStateOf(preferredRatio) }
     var saving by remember { mutableStateOf(false) }
+    var seeded by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         val shape = RoundedCornerShape(20.dp)
@@ -203,6 +190,24 @@ private fun CropDialog(
                 }
             } else {
                 val imgAspect = image.width.toFloat() / image.height.coerceAtLeast(1)
+                // The element knows the ratio it needs; the crop box opens at
+                // the largest centred rectangle with exactly that ratio, so
+                // there is no ratio picker to fight with.
+                if (!seeded) {
+                    seeded = true
+                    val want = preferredRatio
+                    if (want != null && want > 0f) {
+                        val (sw, sh) =
+                            if (imgAspect >= want) 1f to want / imgAspect
+                            else imgAspect / want to 1f
+                        left = (1f - sw) / 2f
+                        right = left + sw
+                        top = (1f - sh) / 2f
+                        bottom = top + sh
+                    } else {
+                        left = 0f; top = 0f; right = 1f; bottom = 1f
+                    }
+                }
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -279,40 +284,16 @@ private fun CropDialog(
                             },
                     )
                 }
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Ratios.forEach { opt ->
-                        val on = ratio == opt.value
-                        val s = RoundedCornerShape(9.dp)
-                        Box(
-                            Modifier
-                                .clip(s)
-                                .background(
-                                    if (on) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.surfaceVariant,
-                                )
-                                .clickable { ratio = opt.value }
-                                .padding(horizontal = 11.dp, vertical = 7.dp),
-                        ) {
-                            Text(
-                                opt.label,
-                                fontSize = 11.sp,
-                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (on) MaterialTheme.colorScheme.onPrimary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
             }
 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = {
-                    left = 0f; top = 0f; right = 1f; bottom = 1f; ratio = null
-                }) { Text("Whole image", fontSize = 11.sp) }
-                Spacer(Modifier.weight(1f))
+                Text(
+                    if (preferredRatio != null) "Locked to the ratio this spot needs"
+                    else "Drag the corner to resize",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
                 TextButton(onClick = onDismiss) { Text("Cancel", fontSize = 12.sp) }
                 TextButton(
                     enabled = bmp != null && !saving,

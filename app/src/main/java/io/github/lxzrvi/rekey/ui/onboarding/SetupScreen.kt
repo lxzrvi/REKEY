@@ -1,10 +1,14 @@
 package io.github.lxzrvi.rekey.ui.onboarding
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +86,18 @@ fun SetupScreen(
     var enabled by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(false) }
     var step by remember { mutableIntStateOf(0) }
+    var overlayOk by remember {
+        mutableStateOf(Settings.canDrawOverlays(context))
+    }
+    var micOk by remember {
+        mutableStateOf(
+            context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val micLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> micOk = granted }
 
     fun refresh() {
         enabled = runCatching {
@@ -175,6 +191,33 @@ fun SetupScreen(
                 done = selected,
                 active = step == 1,
                 onClick = { runCatching { imm.showInputMethodPicker() } },
+            )
+
+            // Both optional: floating and voice typing work better with them,
+            // but neither blocks Continue.
+            OptionalStep(
+                index = 3,
+                title = stringResource(R.string.setup_float_title),
+                body = stringResource(R.string.setup_float_body),
+                action = stringResource(R.string.setup_open_settings),
+                done = overlayOk,
+                onClick = {
+                    overlayOk = Settings.canDrawOverlays(context)
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_OVERLAY_DRAW)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                },
+            )
+            OptionalStep(
+                index = 4,
+                title = stringResource(R.string.setup_mic_title),
+                body = stringResource(R.string.setup_mic_body),
+                action = stringResource(R.string.setup_allow_mic),
+                done = micOk,
+                onClick = { micLauncher.launch(Manifest.permission.RECORD_AUDIO) },
             )
 
             Spacer(Modifier.height(2.dp))
@@ -273,6 +316,80 @@ private fun SetupStep(
             modifier = Modifier.fillMaxWidth().height(40.dp),
         ) {
             Text(action, fontSize = 13.sp)
+        }
+        Text(
+            text = stringResource(R.string.setup_step_index, index),
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        )
+    }
+}
+
+/** A skippable extra: floating over other apps, or the microphone for voice. */
+@Composable
+private fun OptionalStep(
+    index: Int,
+    title: String,
+    body: String,
+    action: String,
+    done: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(GlassContract.CORNER_DP.dp)
+    val accent = MaterialTheme.colorScheme.primary
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f),
+                shape = shape,
+            )
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(if (done) accent else MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (done) {
+                    RekeyGlyph(Glyph.CHECK, MaterialTheme.colorScheme.onPrimary, Modifier.size(15.dp))
+                } else {
+                    Text(
+                        text = "Optional",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Text(
+            text = body,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(
+            onClick = onClick,
+            enabled = !done,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(38.dp),
+        ) {
+            Text(action, fontSize = 12.sp)
         }
         Text(
             text = stringResource(R.string.setup_step_index, index),

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RectF
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -24,6 +25,7 @@ enum class Glyph {
     CHEVRON_LEFT, SMILEY, CAPS_ON, CAPS_LOCK,
     CHEVRON_RIGHT, CHEVRON_UP, COPY, CUT, SELECT_ALL,
     HOME, END, BOLD, ITALIC, UNDERLINE,
+    MIC, CLIPBOARD, PIN, CLOCK, MERGE, CONTRAST,
 }
 
 @Composable
@@ -321,6 +323,82 @@ fun RekeyGlyph(
                     lineTo(11f * s, 18.5f * s)
                 }
                 drawPath(a, color, style = stroke)
+            }
+            Glyph.MIC -> {
+                drawRoundRect(
+                    color = color,
+                    topLeft = p(9f, 2.5f),
+                    size = Size(6f * s, 11f * s),
+                    cornerRadius = CornerRadius(3f * s, 3f * s),
+                    style = stroke,
+                )
+                val a = Path().apply {
+                    moveTo(5.5f * s, 11.5f * s)
+                    quadraticTo(5.5f * s, 19f, 12f * s, 19f * s)
+                    quadraticTo(18.5f * s, 19f, 18.5f * s, 11.5f * s)
+                }
+                drawPath(a, color, style = stroke)
+                drawLine(color, p(12f, 19f), p(12f, 22f), sw, StrokeCap.Round)
+            }
+            Glyph.CLIPBOARD -> {
+                drawRoundRect(
+                    color = color,
+                    topLeft = p(4.5f, 4.5f),
+                    size = Size(15f * s, 16.5f * s),
+                    cornerRadius = CornerRadius(2.5f * s, 2.5f * s),
+                    style = stroke,
+                )
+                drawRoundRect(
+                    color = color,
+                    topLeft = p(8.5f, 2.5f),
+                    size = Size(7f * s, 4.5f * s),
+                    cornerRadius = CornerRadius(1.6f * s, 1.6f * s),
+                    style = stroke,
+                )
+                drawLine(color, p(8.5f, 12f), p(15.5f, 12f), sw * 0.85f, StrokeCap.Round)
+                drawLine(color, p(8.5f, 16f), p(13.5f, 16f), sw * 0.85f, StrokeCap.Round)
+            }
+            Glyph.PIN -> {
+                val a = Path().apply {
+                    moveTo(9f * s, 3.5f * s)
+                    lineTo(15f * s, 3.5f * s)
+                    lineTo(14.2f * s, 10.5f * s)
+                    quadraticTo(18f * s, 12.5f, 18f * s, 15f * s)
+                    lineTo(6f * s, 15f * s)
+                    quadraticTo(6f * s, 12.5f, 9.8f * s, 10.5f * s)
+                    close()
+                }
+                drawPath(a, color, style = stroke)
+                drawLine(color, p(12f, 15f), p(12f, 21.5f), sw, StrokeCap.Round)
+            }
+            Glyph.CLOCK -> {
+                drawCircle(color, 8.6f * s, p(12f, 12f), style = stroke)
+                drawLine(color, p(12f, 7f), p(12f, 12f), sw, StrokeCap.Round)
+                drawLine(color, p(12f, 12f), p(16f, 14.5f), sw, StrokeCap.Round)
+            }
+            Glyph.MERGE -> {
+                val a = Path().apply {
+                    moveTo(4f * s, 5f * s)
+                    lineTo(10f * s, 12f * s)
+                    lineTo(4f * s, 19f * s)
+                }
+                drawPath(a, color, style = stroke)
+                val b = Path().apply {
+                    moveTo(20f * s, 5f * s)
+                    lineTo(14f * s, 12f * s)
+                    lineTo(20f * s, 19f * s)
+                }
+                drawPath(b, color, style = stroke)
+                drawLine(color, p(12f, 12f), p(12f, 12f), sw * 3.2f, StrokeCap.Round)
+            }
+            Glyph.CONTRAST -> {
+                drawCircle(color, 8.6f * s, p(12f, 12f), style = stroke)
+                val a = Path().apply {
+                    moveTo(12f * s, 3.4f * s)
+                    arcTo(RectF(3.4f * s, 3.4f * s, 20.6f * s, 20.6f * s), 270f, 180f, false)
+                    close()
+                }
+                drawPath(a, color)
             }
         }
     }

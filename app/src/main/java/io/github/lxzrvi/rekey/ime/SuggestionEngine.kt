@@ -101,6 +101,10 @@ class SuggestionEngine(private val context: Context) {
                     if (out.isEmpty()) completions("", limit).forEach {
                         add(Suggestion(it.first, SuggestionType.NEXT_WORD, ln(it.second + 1.0)))
                     }
+                    // "i love " -> the heart arrives before you finish the word.
+                    prev?.let { p -> EmojiRepository.emojiForWord(p) }?.let {
+                        emoji = it
+                    }
                 } else {
                     val isKnown = find(t)?.isWord == true
 
@@ -115,9 +119,10 @@ class SuggestionEngine(private val context: Context) {
                         }
                     }
 
-                    // Keep exactly what the user typed available, and put it
-                    // first when the dictionary has never seen the word.
-                    if (!isKnown) add(Suggestion(typed, SuggestionType.LITERAL, Double.MAX_VALUE))
+                    // Exactly what the user typed always leads the strip, with
+                    // its own casing: known word or not, that is the word they
+                    // meant to commit.
+                    add(Suggestion(typed, SuggestionType.LITERAL, Double.MAX_VALUE))
 
                     if (t.length >= 3) emoji = EmojiRepository.emojiForWord(t)
                 }

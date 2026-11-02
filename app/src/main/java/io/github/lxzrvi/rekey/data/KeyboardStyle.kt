@@ -300,7 +300,7 @@ data class FeelStyle(
     val soundVolume: Float = 0.6f,
     val hapticOn: Boolean = true,
     /** 1..255, fed to VibrationEffect as an amplitude. */
-    val hapticStrength: Int = 70,
+    val hapticStrength: Int = 110,
     /** Milliseconds. */
     val hapticDuration: Int = 18,
 ) {
@@ -349,6 +349,7 @@ data class SuggestionStyle(
     val pillTranslate: Boolean = true,
     val pillTheme: Boolean = true,
     val pillLanguage: Boolean = true,
+    val pillVoice: Boolean = true,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("enabled", enabled)
@@ -368,6 +369,7 @@ data class SuggestionStyle(
         .put("pillTranslate", pillTranslate)
         .put("pillTheme", pillTheme)
         .put("pillLanguage", pillLanguage)
+        .put("pillVoice", pillVoice)
 
     companion object {
         fun fromJson(o: JSONObject?): SuggestionStyle {
@@ -391,6 +393,7 @@ data class SuggestionStyle(
                 pillTranslate = o.optBoolean("pillTranslate", d.pillTranslate),
                 pillTheme = o.optBoolean("pillTheme", d.pillTheme),
                 pillLanguage = o.optBoolean("pillLanguage", d.pillLanguage),
+                pillVoice = o.optBoolean("pillVoice", d.pillVoice),
             )
         }
     }

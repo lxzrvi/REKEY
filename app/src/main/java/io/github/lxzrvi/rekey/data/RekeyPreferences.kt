@@ -5,6 +5,9 @@ import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** One row of the in-keyboard clipboard history. */
+data class ClipEntry(val text: String, val pinned: Boolean)
+
 /** Lightweight local persistence; no network, account, or extra storage dependency. */
 class RekeyPreferences(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("rekey_local", Context.MODE_PRIVATE)
@@ -98,4 +101,31 @@ class RekeyPreferences(context: Context) {
 
     fun loadActivePresetId(): Int = prefs.getInt("active_preset", 1)
     fun saveActivePresetId(id: Int) = prefs.edit { putInt("active_preset", id) }
+
+    // ---- In-keyboard clipboard history --------------------------------
+
+    fun loadClipHistory(): List<ClipEntry> {
+        val raw = prefs.getString("clip_history", null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val t = o.optString("t", "")
+                    if (t.isNotBlank()) add(ClipEntry(t, o.optBoolean("p", false)))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveClipHistory(list: List<ClipEntry>) {
+        val arr = JSONArray()
+        list.forEach { arr.put(JSONObject().put("t", it.text).put("p", it.pinned)) }
+        prefs.edit { putString("clip_history", arr.toString()) }
+    }
+
+    // ---- Floating keyboard permission prompt --------------------------
+
+    fun loadFloatAsked(): Boolean = prefs.getBoolean("float_asked", false)
+    fun saveFloatAsked() = prefs.edit { putBoolean("float_asked", true) }
 }

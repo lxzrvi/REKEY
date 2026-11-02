@@ -54,13 +54,11 @@ import io.github.lxzrvi.rekey.R
 import io.github.lxzrvi.rekey.data.KeyboardPreset
 import io.github.lxzrvi.rekey.data.KeyboardStyle
 import io.github.lxzrvi.rekey.ui.editor.StyleWizard
-import io.github.lxzrvi.rekey.design.GlassContract
 import io.github.lxzrvi.rekey.ui.keyboard.KeyboardCanvas
 import io.github.lxzrvi.rekey.ui.components.Glyph
 import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 import kotlin.math.roundToInt
 
-private val EditorShape = RoundedCornerShape(GlassContract.CORNER_DP.dp)
 private val EditorBarHeight = 48.dp
 
 /**
@@ -112,6 +110,18 @@ fun PresetEditor(
         val w = anchor.width + (endW - anchor.width) * p
         val h = anchor.height + (endH - anchor.height) * p
 
+        // The card keeps the preset's own radii, scaled to the rectangle it
+        // currently occupies — the same shape as the stack copy at p=0 and the
+        // real keyboard at p=1, so the flight never reshapes mid-air.
+        val flightScale = (anchor.width + (endW - anchor.width) * p) / KeyboardCanvas.WIDTH_VALUE
+        val lay = preset.style.layout
+        val flightShape = RoundedCornerShape(
+            topStart = (lay.cornerTopLeft * flightScale).dp,
+            topEnd = (lay.cornerTopRight * flightScale).dp,
+            bottomStart = (lay.cornerBottomLeft * flightScale).dp,
+            bottomEnd = (lay.cornerBottomRight * flightScale).dp,
+        )
+
         // Top bar: circular back button, then "Preset".
         Row(
             Modifier
@@ -145,9 +155,8 @@ fun PresetEditor(
                     transformOrigin = TransformOrigin(0f, 0f)
                 }
                 .size(with(density) { endW.toDp() }, with(density) { endH.toDp() })
-                .clip(EditorShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), EditorShape),
+                .clip(flightShape)
+                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), flightShape),
         ) {
             PresetCardFace(preset = preset)
         }
@@ -199,36 +208,38 @@ fun PresetEditor(
                     modifier = Modifier.testTag("editor_details"),
                 )
                 Spacer(Modifier.height(2.dp))
-                Button(
-                    onClick = { keyboard?.hide(); onUse() },
-                    enabled = !inUse,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp).testTag("editor_use"),
-                ) {
-                    Text(
-                        text = stringResource(if (inUse) R.string.editor_in_use else R.string.editor_use_layout),
-                        fontSize = 14.sp,
-                    )
-                }
-                // Edit opens the wizard; Okay keeps just the name and details
-                // and returns to the main page. Both sit on the same row.
+                // Use this layout, Edit and Okay share one row.
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    Button(
+                        onClick = { keyboard?.hide(); onUse() },
+                        enabled = !inUse,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1.5f).height(44.dp).testTag("editor_use"),
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (inUse) R.string.editor_in_use else R.string.editor_use_layout,
+                            ),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                        )
+                    }
                     Button(
                         onClick = { keyboard?.hide(); styleOpen = true },
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f).height(44.dp).testTag("editor_edit"),
                     ) {
-                        Text(text = stringResource(R.string.editor_edit_style), fontSize = 14.sp)
+                        Text(text = stringResource(R.string.editor_edit_style), fontSize = 12.sp)
                     }
                     Button(
                         onClick = { keyboard?.hide(); onBack() },
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f).height(44.dp).testTag("editor_okay"),
                     ) {
-                        Text(text = stringResource(R.string.editor_okay), fontSize = 14.sp)
+                        Text(text = stringResource(R.string.editor_okay), fontSize = 12.sp)
                     }
                 }
             }

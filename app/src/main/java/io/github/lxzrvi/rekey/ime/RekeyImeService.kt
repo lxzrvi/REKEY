@@ -50,14 +50,22 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.lxzrvi.rekey.data.AppearanceSettings
+import io.github.lxzrvi.rekey.data.ClipEntry
 import io.github.lxzrvi.rekey.data.KeyboardPalettes
 import io.github.lxzrvi.rekey.data.KeyboardStyle
 import io.github.lxzrvi.rekey.data.RekeyPreferences
 import io.github.lxzrvi.rekey.data.ThemeMode
+import io.github.lxzrvi.rekey.ime.CombineResult
 import io.github.lxzrvi.rekey.ui.keyboard.KeyAction
 import io.github.lxzrvi.rekey.ui.components.rememberUriImage
 import io.github.lxzrvi.rekey.ui.keyboard.RekeyKeyboard
 import io.github.lxzrvi.rekey.ui.theme.RekeyTheme
+import android.content.Intent
+import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.widget.Toast
 
 /**
  * The real Android input method.
@@ -83,6 +91,17 @@ class RekeyImeService :
     private var style by mutableStateOf(KeyboardStyle())
     private var floating by mutableStateOf(false)
     private var floatY by mutableFloatStateOf(0f)
+    private var floatX by mutableFloatStateOf(0f)
+    private var floatScale by mutableFloatStateOf(1f)
+    private var showFloatPrompt by mutableStateOf(false)
+    private var keyboardLanguage by mutableStateOf("en")
+    private var clipHistory by mutableStateOf<List<ClipEntry>>(emptyList())
+    private var voiceActive by mutableStateOf(false)
+    private var voiceLevel by mutableFloatStateOf(0f)
+    private var voiceRetries = 0
+    private var recognizer: android.speech.SpeechRecognizer? = null
+    private var inputSession by mutableIntStateOf(0)
+    private var windowBackground: android.graphics.drawable.Drawable? = null
     private lateinit var feedback: KeyFeedback
     private var systemDark by mutableStateOf(false)
     private var suggestions by mutableStateOf<List<String>>(emptyList())
@@ -124,6 +143,14 @@ class RekeyImeService :
         feedback = KeyFeedback(this)
         engine = SuggestionEngine(this)
         combiner = EmojiCombiner(this)
+        clipHistory = preferences.loadClipHistory()
+        // Everything copied while the IME is alive lands in the in-keyboard
+        // clipboard, pinned rows included.
+        runCatching {
+            getSystemService(ClipboardManager::class.java)?.addPrimaryClipChangedListener {
+                pushClipFromSystem()
+            }
+        }
         io.launch {
             // Both read assets; neither may block the first frame.
             EmojiRepository.init(applicationContext)
@@ -202,10 +229,15 @@ class RekeyImeService :
         }
         // Leave the window height to the framework. Forcing MATCH_PARENT made
         // the IME cover the screen; the board only needs its input area wrapped.
+        // While floating, the window DOES go full height so the board can
+        // travel anywhere on screen, and its background turns transparent so
+        // the app behind stays visible. SYSTEM_ALERT_WINDOW is not needed for
+        // this — it stays an optional extra for moving the board over other
+        // apps from outside the IME.
         val inputArea = w.findViewById<View>(android.R.id.inputArea)
         val holder = inputArea?.parent as? View ?: return
         val lp = holder.layoutParams
-        lp.height = if (isFullscreenMode) {
+        lp.height = if (isFullscreenMode || floating) {
             ViewGroup.LayoutParams.MATCH_PARENT
         } else {
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -214,6 +246,12 @@ class RekeyImeService :
         // change never triggers a relayout.
         (lp as? android.widget.FrameLayout.LayoutParams)?.gravity = Gravity.BOTTOM
         holder.layoutParams = lp
+        if (windowBackground == null) windowBackground = w.background
+        if (floating) {
+            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
+        } else {
+            windowBackground?.let { w.setBackgroundDrawable(it) }
+        }
     }
 
     override fun onCreateInputView(): View {
@@ -265,6 +303,18 @@ class RekeyImeService :
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        // Every new field opens the text page: no emoji, no symbol page, no
+        // floating board, no half-listening voice session left behind.
+        inputSession += 1
+        if (floating) {
+            floating = false
+            updateWindowLayout()
+        }
+        floatX = 0f
+        floatY = 0f
+        floatScale = 1f
+        showFloatPrompt = false
+        stopVoice()
         reloadTheme()
         updateSuggestions()
         moveLifecycle(Lifecycle.State.RESUMED)
@@ -274,6 +324,7 @@ class RekeyImeService :
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        stopVoice()
         moveLifecycle(Lifecycle.State.CREATED)
         super.onFinishInputView(finishingInput)
     }
@@ -294,8 +345,14 @@ class RekeyImeService :
             lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         }
         store.clear()
+        stopVoice()
         if (::feedback.isInitialized) feedback.release()
-        if (::engine.isInitialized) io.launch { engine.flush() }
+        // Flush must finish before the scope dies: launching it and then
+        // cancelling the scope in the same breath dropped user_lm.tsv every
+        // time the process went away.
+        if (::engine.isInitialized) {
+            runCatching { kotlinx.coroutines.runBlocking { engine.flush() } }
+        }
         io.cancel()
     }
 
@@ -307,6 +364,7 @@ class RekeyImeService :
         val preset = preferences.loadPresets().firstOrNull { it.id == active }
         palette = preset?.palette ?: KeyboardPalettes.Paper
         style = preset?.style ?: KeyboardStyle()
+        keyboardLanguage = preferences.loadKeyboardLanguage()
         if (::feedback.isInitialized) feedback.configure(style.feel)
     }
 
@@ -340,7 +398,7 @@ class RekeyImeService :
                 val r = maxOf(style.layout.cornerTopLeft, 18f)
                 style.copy(
                     layout = style.layout.copy(
-                        widthScale = style.layout.widthScale * 0.88f,
+                        widthScale = style.layout.widthScale * 0.88f * floatScale,
                         cornerTopLeft = r, cornerTopRight = r,
                         cornerBottomLeft = r, cornerBottomRight = r,
                         padBottom = style.layout.padBottom + 4f,
@@ -350,7 +408,12 @@ class RekeyImeService :
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .offset { IntOffset(0, if (floating) floatY.toInt() else 0) }
+                    .offset {
+                        IntOffset(
+                            if (floating) floatX.toInt() else 0,
+                            if (floating) floatY.toInt() else 0,
+                        )
+                    }
                     .padding(bottom = if (floating) 14.dp else 0.dp),
                 contentAlignment = Alignment.BottomCenter,
             ) {
@@ -364,11 +427,28 @@ class RekeyImeService :
                 rightInsetPx = navRightPx,
                 systemHaptic = false,
                 floating = floating,
-                onFloatingDrag = { dy ->
-                    floatY = (floatY + dy).coerceIn(-900f, 0f)
-                },
+                onFloatingDrag = ::floatingDrag,
+                onFloatResize = ::floatResize,
                 suggestions = suggestions,
                 onKey = ::handleKey,
+                resetToken = inputSession,
+                voiceActive = voiceActive,
+                voiceLevel = voiceLevel,
+                clipHistory = clipHistory,
+                keyboardLanguage = keyboardLanguage,
+                floatNeedsPermission = showFloatPrompt,
+                onFloatPermission = {
+                    preferences.saveFloatAsked()
+                    showFloatPrompt = false
+                    runCatching {
+                        startActivity(
+                            Intent(Settings.ACTION_MANAGE_OVERLAY_DRAW)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                },
+                onFloatPromptDismiss = { preferences.saveFloatAsked(); showFloatPrompt = false },
+                onCombineSend = ::combineSend,
             )
             }
         }
@@ -379,7 +459,13 @@ class RekeyImeService :
             KeyAction.HIDE -> { requestHideSelf(0); return }
             KeyAction.TOGGLE_FLOAT -> {
                 floating = !floating
+                floatX = 0f
                 floatY = 0f
+                floatScale = 1f
+                showFloatPrompt = floating &&
+                    !android.provider.Settings.canDrawOverlays(this) &&
+                    !preferences.loadFloatAsked()
+                updateWindowLayout()
                 return
             }
             KeyAction.SWITCH_KEYBOARD -> {
@@ -404,6 +490,42 @@ class RekeyImeService :
             }
             KeyAction.LANGUAGE -> { switchToNextInputMethod(false); return }
             KeyAction.CYCLE_THEME -> { cycleTheme(); return }
+            KeyAction.FLOAT_PERMISSION -> {
+                preferences.saveFloatAsked()
+                showFloatPrompt = false
+                runCatching {
+                    startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_DRAW)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+                return
+            }
+            KeyAction.VOICE_TOGGLE -> { toggleVoice(); return }
+            KeyAction.SET_LANGUAGE -> {
+                preferences.saveKeyboardLanguage(text)
+                keyboardLanguage = text
+                applyLanguageSubtype(text)
+                feedback.tap()
+                return
+            }
+            KeyAction.CLIP_PICK -> {
+                if (text.isNotEmpty()) currentInputConnection?.commitText(text, 1)
+                return
+            }
+            KeyAction.CLIP_PIN -> {
+                clipHistory = clipHistory.map {
+                    if (it.text == text) it.copy(pinned = !it.pinned) else it
+                }
+                preferences.saveClipHistory(clipHistory)
+                return
+            }
+            KeyAction.CLIP_REMOVE -> {
+                clipHistory = clipHistory.filterNot { it.text == text }
+                preferences.saveClipHistory(clipHistory)
+                return
+            }
+            KeyAction.COMBINE_SEND -> { combineSendParts(text); return }
             else -> Unit
         }
         feedback.tap()
@@ -462,7 +584,10 @@ class RekeyImeService :
             KeyAction.UNDERLINE -> sendCtrl(KeyEvent.KEYCODE_U)
             KeyAction.LANGUAGE, KeyAction.CYCLE_THEME, KeyAction.HIDE, KeyAction.TOGGLE_FLOAT,
             KeyAction.SUGGEST, KeyAction.SWITCH_KEYBOARD, KeyAction.LONG_RELEASE,
-            KeyAction.CURSOR, KeyAction.CLIPBOARD -> Unit
+            KeyAction.CURSOR, KeyAction.CLIPBOARD,
+            KeyAction.CLIP_PICK, KeyAction.CLIP_PIN, KeyAction.CLIP_REMOVE,
+            KeyAction.SET_LANGUAGE, KeyAction.VOICE_TOGGLE, KeyAction.COMBINE_SEND,
+            KeyAction.FLOAT_PERMISSION -> Unit
         }
     }
 
@@ -507,6 +632,180 @@ class RekeyImeService :
         palette = next.palette
         style = next.style
         feedback.configure(style.feel)
+    }
+
+    /** Record a system clipboard change into the in-keyboard history. */
+    private fun pushClipFromSystem() {
+        val cm = getSystemService(ClipboardManager::class.java) ?: return
+        val text = cm.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)?.coerceToText(this)?.toString()
+        if (text.isNullOrBlank()) return
+        val keepPinned = clipHistory.firstOrNull { it.text == text }?.pinned ?: false
+        clipHistory = (ClipEntry(text, keepPinned) + clipHistory.filterNot { it.text == text })
+            .take(20)
+        preferences.saveClipHistory(clipHistory)
+    }
+
+    /** The floating board follows the finger in both axes, on the screen. */
+    private fun floatingDrag(dx: Float, dy: Float) {
+        val dm = resources.displayMetrics
+        val kbW = dm.widthPixels * 0.88f *
+            style.layout.widthScale * floatScale
+        val maxX = ((dm.widthPixels - kbW) / 2f).coerceAtLeast(0f)
+        floatX = (floatX + dx).coerceIn(-maxX, maxX)
+        val kbH = 265f * dm.density * style.layout.heightScale
+        val maxY = (dm.heightPixels - kbH).coerceAtLeast(0f)
+        floatY = (floatY + dy).coerceIn(-maxY, 0f)
+    }
+
+    /** The curved grip in the floating board's top-right corner. */
+    private fun floatResize(delta: Float) {
+        floatScale = (floatScale + delta).coerceIn(0.6f, 1.35f)
+    }
+
+    // ---- Voice typing ---------------------------------------------------
+
+    private fun voiceIntent(): Intent =
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, keyboardLanguage)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+
+    private fun toggleVoice() {
+        if (voiceActive) {
+            stopVoice()
+            return
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            Toast.makeText(
+                this,
+                "Allow the microphone in REKEY setup to use voice typing",
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        startVoice()
+    }
+
+    private fun startVoice() {
+        if (voiceActive) return
+        runCatching {
+            val r = SpeechRecognizer.createSpeechRecognizer(this)
+            recognizer = r
+            r.setRecognitionListener(voiceListener)
+            voiceActive = true
+            voiceLevel = 0f
+            voiceRetries = 0
+            r.startListening(voiceIntent())
+        }.onFailure {
+            voiceActive = false
+        }
+    }
+
+    /**
+     * The session stays open until the owner taps the mic: results are
+     * committed and listening restarts, silence restarts too, and only a
+     * broken recognition service ends it.
+     */
+    private val voiceListener = object : RecognitionListener {
+        override fun onResults(results: android.os.Bundle?) {
+            val text = results
+                ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                ?.firstOrNull()
+            if (!text.isNullOrBlank()) {
+                currentInputConnection?.commitText(text, 1)
+                updateSuggestions()
+            }
+            restartVoice()
+        }
+
+        override fun onPartialResults(partialResults: android.os.Bundle?) = Unit
+        override fun onBufferReceived(buffer: ByteArray?) = Unit
+        override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
+        override fun onReadyForSpeech(params: android.os.Bundle?) = Unit
+        override fun onBeginningOfSpeech() = Unit
+        override fun onEndOfSpeech() = Unit
+
+        override fun onRmsChanged(rmsdB: Float) {
+            voiceLevel = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+        }
+
+        override fun onError(error: Int) {
+            if (!voiceActive) return
+            when (error) {
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> stopVoice()
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                SpeechRecognizer.ERROR_NETWORK,
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+                SpeechRecognizer.ERROR_SERVER,
+                SpeechRecognizer.ERROR_CLIENT,
+                -> {
+                    voiceRetries += 1
+                    if (voiceRetries > 3) stopVoice() else restartVoice()
+                }
+                // Silence or no match: keep the mic open, just listen again.
+                else -> restartVoice()
+            }
+        }
+    }
+
+    private fun restartVoice() {
+        if (!voiceActive) return
+        val r = recognizer ?: return startVoice()
+        runCatching { r.startListening(voiceIntent()) }.onFailure { stopVoice() }
+    }
+
+    private fun stopVoice() {
+        voiceActive = false
+        voiceLevel = 0f
+        runCatching { recognizer?.cancel() }
+        runCatching { recognizer?.destroy() }
+        recognizer = null
+    }
+
+    // ---- Emoji combiner + language -------------------------------------
+
+    private fun combineSend(a: String, b: String, styleName: String) {
+        combineSendParts("$a\t$b\t$styleName")
+    }
+
+    private fun combineSendParts(text: String) {
+        val parts = text.split('\t')
+        if (parts.size != 3) return
+        val style = runCatching { MashupStyle.valueOf(parts[2]) }
+            .getOrDefault(MashupStyle.SPLIT)
+        val result = combiner.combine(parts[0], parts[1], style)
+        val ic = currentInputConnection
+        val info = currentInputEditorInfo
+        if (ic != null && info != null) combiner.send(result, ic, info)
+        val recent = when (result) {
+            is CombineResult.Zwj -> result.text
+            is CombineResult.Mashup -> result.fallbackText
+        }
+        EmojiRepository.pushRecent(recent)
+        feedback.tap()
+    }
+
+    /** Switch this IME's own subtype so the system shows the new language. */
+    private fun applyLanguageSubtype(tag: String) {
+        runCatching {
+            val self = Settings.Secure.getString(
+                contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD,
+            ) ?: return
+            if (!self.startsWith(packageName)) return
+            val subtype = android.view.inputmethod.InputMethodSubtype.Builder()
+                .setLanguageTag(tag)
+                .setMode("keyboard")
+                .setIsAuxiliary(false)
+                .build()
+            // The service-level call switches our own subtype without
+            // disturbing whichever other keyboard the owner may use.
+            setInputMethodAndSubtype(self, subtype)
+        }
     }
 
     private fun pasteClipboard() {

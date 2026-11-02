@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Voice typing listens through the phone's speech recognizer. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Optional: only for lifting the board over other apps from Settings;
+         the keyboard floats inside its own window without it. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"

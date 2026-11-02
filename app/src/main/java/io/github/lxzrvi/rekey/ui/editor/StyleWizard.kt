@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +45,8 @@ import io.github.lxzrvi.rekey.data.KeyboardStyle
 import io.github.lxzrvi.rekey.data.LayoutStyle
 import io.github.lxzrvi.rekey.data.SuggestionStyle
 import io.github.lxzrvi.rekey.ime.KeyFeedback
+import io.github.lxzrvi.rekey.ui.components.Glyph
+import io.github.lxzrvi.rekey.ui.components.RekeyGlyph
 
 /** A fresh scroll position per page, so page 4 never opens half way down. */
 @Composable
@@ -351,22 +354,30 @@ private fun PerKeyPanel(
     palette: KeyboardPalette,
     onChange: (KeyStyle) -> Unit,
 ) {
-    var selected by remember { mutableStateOf<String?>(null) }
+    var selected by remember { mutableStateOf(setOf<String>()) }
     val labels = remember {
         ("qwertyuiop" + "asdfghjkl" + "zxcvbnm").map { it.toString() } +
-            listOf("shift", "backspace", "?123", "emoji", "space", "enter", ".", ",")
+            listOf("shift", "backspace", "?123", "emoji", "space", "enter", ".", ",") +
+            listOf("0", "1", "2", "3", "4", "5", "6", "7", "8", "9") +
+            listOf("-", "+", "=", "/", "\\", "@", "#", "$", "%", "&") +
+            listOf("*", "(", ")", "[", "]", "<", ">", "!", "?", "'")
     }
     Panel("One key on its own") {
         Text(
-            text = if (selected == null) "Tap a key below to style just that key."
-            else "Editing \"${selected}\". Everything left on Auto follows the shared style.",
+            text = when {
+                selected.isEmpty() -> "Tap keys below to style them — tap again to drop. " +
+                    "Digits and symbols style the number page."
+                selected.size == 1 -> "Editing \"${selected.first()}\". Everything left on Auto " +
+                    "follows the shared style."
+                else -> "Editing ${selected.size} keys. Every change lands on all of them."
+            },
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         labels.chunked(10).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 row.forEach { k ->
-                    val on = k == selected
+                    val on = k in selected
                     val styled = spec.overrides[k]?.isEmpty == false
                     val sh = RoundedCornerShape(7.dp)
                     Box(
@@ -381,7 +392,9 @@ private fun PerKeyPanel(
                                     else -> MaterialTheme.colorScheme.surfaceVariant
                                 },
                             )
-                            .clickable { selected = if (on) null else k },
+                            .clickable {
+                                selected = if (on) selected - k else selected + k
+                            },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -396,11 +409,12 @@ private fun PerKeyPanel(
                 repeat(10 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
-        selected?.let { k ->
-            val cur = spec.overrides[k] ?: KeyOverride()
+        if (selected.isNotEmpty()) {
+            val keys = selected.toList()
+            val cur = keys.mapNotNull { spec.overrides[it] }.firstOrNull() ?: KeyOverride()
             fun put(next: KeyOverride) {
                 val map = spec.overrides.toMutableMap()
-                if (next.isEmpty) map.remove(k) else map[k] = next
+                keys.forEach { k -> if (next.isEmpty) map.remove(k) else map[k] = next }
                 onChange(spec.copy(overrides = map))
             }
             ColorRow("Key colour", cur.color, spec.keyColor ?: palette.key) { put(cur.copy(color = it)) }
@@ -427,7 +441,8 @@ private fun PerKeyPanel(
                 title = { KeySounds.labels[it] },
                 onSelect = { put(cur.copy(soundIndex = it)) },
             )
-            TextButton(onClick = { put(KeyOverride()) }) { Text("Clear this key", fontSize = 11.sp) }
+            TextButton(onClick = { put(KeyOverride()) }) { Text("Clear these keys", fontSize = 11.sp) }
+            TextButton(onClick = { selected = emptySet() }) { Text("Done picking", fontSize = 11.sp) }
         }
     }
 }
@@ -502,6 +517,11 @@ private fun SuggestionPage(
     palette: KeyboardPalette,
     onChange: (SuggestionStyle) -> Unit,
 ) {
+    Panel("Preview") {
+        // The strip exactly as the keyboard draws it, with the action pill
+        // already open so every control below can be judged in place.
+        PillPreview(spec, palette)
+    }
     Panel("Strip") {
         SwitchRow("Show the suggestion bar", spec.enabled) { onChange(spec.copy(enabled = it)) }
         SegmentRow(
@@ -535,10 +555,81 @@ private fun SuggestionPage(
         SliderRow("Corner radius", spec.pillRadius, 6f..30f, { onChange(spec.copy(pillRadius = it)) }, " dp")
         ColorRow("Pill colour", spec.pillColor, palette.key) { onChange(spec.copy(pillColor = it)) }
         ColorRow("Icon colour", spec.pillIconColor, palette.text) { onChange(spec.copy(pillIconColor = it)) }
-        SwitchRow("Paste", spec.pillPaste) { onChange(spec.copy(pillPaste = it)) }
-        SwitchRow("Translate", spec.pillTranslate) { onChange(spec.copy(pillTranslate = it)) }
+        SwitchRow("Clipboard", spec.pillPaste) { onChange(spec.copy(pillPaste = it)) }
+        SwitchRow("Change keyboard", spec.pillTranslate) { onChange(spec.copy(pillTranslate = it)) }
         SwitchRow("Change theme", spec.pillTheme) { onChange(spec.copy(pillTheme = it)) }
         SwitchRow("Change language", spec.pillLanguage) { onChange(spec.copy(pillLanguage = it)) }
+        SwitchRow("Voice typing", spec.pillVoice) { onChange(spec.copy(pillVoice = it)) }
+    }
+}
+
+/** Live preview of the suggestion strip with the pill held open. */
+@Composable
+private fun PillPreview(spec: SuggestionStyle, palette: KeyboardPalette) {
+    val barH = spec.height.dp
+    val shape = RoundedCornerShape(spec.radius.dp)
+    val pillShape = RoundedCornerShape(spec.pillRadius.dp)
+    val keyBg = spec.color ?: palette.key
+    val tint = spec.textColor ?: palette.text
+    val iconTint = spec.pillIconColor ?: tint
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (spec.grabberEnabled) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .width(spec.grabberWidth.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background((spec.grabberColor ?: palette.muted).copy(alpha = 0.55f)),
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().height(barH),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            listOf("Hello", "Design", "Today").take(spec.columns.coerceAtMost(3)).forEach { w ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(barH)
+                        .clip(shape)
+                        .background(keyBg)
+                        .border(1.dp, palette.border.copy(alpha = 0.5f), shape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        w,
+                        color = tint,
+                        fontSize = spec.textSize.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Row(
+                Modifier
+                    .width(178.dp)
+                    .height(barH)
+                    .clip(pillShape)
+                    .background(spec.pillColor ?: keyBg)
+                    .border(1.dp, palette.border.copy(alpha = 0.6f), pillShape),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                if (spec.pillPaste) RekeyGlyph(Glyph.CLIPBOARD, iconTint, Modifier.size(16.dp))
+                if (spec.pillTranslate) RekeyGlyph(Glyph.KEYBOARD_TEXT, iconTint, Modifier.size(16.dp))
+                if (spec.pillTheme) RekeyGlyph(Glyph.CONTRAST, iconTint, Modifier.size(16.dp))
+                if (spec.pillLanguage) RekeyGlyph(Glyph.GLOBE, iconTint, Modifier.size(16.dp))
+                if (spec.pillVoice) RekeyGlyph(Glyph.MIC, iconTint, Modifier.size(16.dp))
+                RekeyGlyph(Glyph.CHEVRON_LEFT, tint, Modifier.size(15.dp))
+            }
+        }
+        Text(
+            "The pill opens with one tap; typing closes it again.",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

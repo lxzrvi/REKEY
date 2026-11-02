@@ -97,6 +97,46 @@ object KeyHints {
         "9" to listOf("⁹", "₉")
     )
 
+    /**
+     * Four corner hints, in [TL, TR, BR, BL] order (null = empty corner).
+     *
+     * TR carries the digit on the top row, otherwise the first accent or
+     * symbol; the remaining corners are filled from accents, then symbols,
+     * then a shared punctuation pool, so every key always shows four hints
+     * for the long-press slide to choose from.
+     */
+    private val pool = listOf(
+        "'", ":", "-", ")", "(", "/", "*", "+", "=", "_",
+        ".", ",", "?", "!", "\"", "<", ">", "[", "]", "{",
+        "}", "$", "%", "&", "#", "@", "~", "^", "|", ";",
+    )
+
+    fun cornersFor(key: String, upperCase: Boolean = false): Array<String?> {
+        val k = key.lowercase()
+        val out = arrayOfNulls<String>(4) // TL, TR, BR, BL
+        val acc = accents[k]?.let { a -> if (upperCase) a.map { it.uppercase() } else a }.orEmpty()
+        val sym = symbols[key].orEmpty()
+        val dig = digitHints[k]
+        // TR: digit first (top row), else first accent, else first symbol.
+        out[1] = dig ?: acc.getOrNull(0) ?: sym.getOrNull(0) ?: pool[0]
+        // TL: second accent, else second symbol, else pool.
+        out[0] = acc.getOrNull(1) ?: sym.getOrNull(1) ?: pool[1]
+        // BR: first symbol, else third accent, else pool.
+        out[2] = sym.getOrNull(0) ?: acc.getOrNull(2) ?: pool[2]
+        // BL: second symbol, else fourth accent, else pool.
+        out[3] = sym.getOrNull(1) ?: acc.getOrNull(3) ?: pool[3]
+        // Never repeat a character across corners.
+        for (i in out.indices) {
+            val c = out[i] ?: continue
+            for (j in 0 until i) if (out[j] == c) { out[i] = null; break }
+        }
+        // A corner left empty by the dedupe borrows from the pool.
+        for (i in out.indices) {
+            if (out[i] == null) out[i] = pool.firstOrNull { p -> out.none { it == p } }
+        }
+        return out
+    }
+
     /** Key par dikhane wala chhota hint (null = koi hint nahi) */
     fun hintFor(key: String): String? {
         val k = key.lowercase()

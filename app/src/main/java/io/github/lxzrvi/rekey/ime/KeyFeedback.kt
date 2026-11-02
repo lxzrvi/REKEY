@@ -70,20 +70,40 @@ class KeyFeedback(context: Context) {
         }
     }
 
-    /** One key strike. Safe to call before the sample has finished loading. */
+    private var lastTick = 0L
+
+    /**
+     * One key strike. Safe to call before the sample has finished loading.
+     *
+     * Two things make it feel expensive: each strike nudges the pitch by a few
+     * percent so a burst never sounds like one sample machine-gunned, and the
+     * vibration is a two-hit "bouncy" waveform — a hard tick, a breath, then a
+     * softer rebound — instead of a flat buzz.
+     */
     fun tap() {
+        // Ten strikes a second is still far below the pitch floor; guard anyway.
+        val now = android.os.SystemClock.uptimeMillis()
+        if (now - lastTick < 12) return
+        lastTick = now
         if (spec.soundOn && ready && sampleId != 0) {
             val v = spec.soundVolume.coerceIn(0f, 1f)
-            pool.play(sampleId, v, v, 1, 0, 1f)
+            val rate = 0.965f + (Math.random() * 0.07).toFloat()
+            pool.play(sampleId, v, v, 1, 0, rate)
         }
         if (spec.hapticOn) {
             val v = vibrator ?: return
             if (!v.hasVibrator()) return
             val ms = spec.hapticDuration.coerceIn(1, 100).toLong()
+            val s = spec.hapticStrength.coerceIn(1, 255)
             runCatching {
                 if (v.hasAmplitudeControl()) {
+                    // off 8ms -> hard hit -> off 6ms -> softer rebound: a bouncy tap.
                     v.vibrate(
-                        VibrationEffect.createOneShot(ms, spec.hapticStrength.coerceIn(1, 255)),
+                        VibrationEffect.createWaveform(
+                            longArrayOf(8L, ms, 6L, (ms * 3) / 5),
+                            intArrayOf(0, s, 0, (s * 3 / 5).coerceAtLeast(1)),
+                            -1,
+                        ),
                     )
                 } else {
                     v.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE))
