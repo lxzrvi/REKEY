@@ -101,7 +101,6 @@ class RekeyImeService :
     private var voiceRetries = 0
     private var recognizer: android.speech.SpeechRecognizer? = null
     private var inputSession by mutableIntStateOf(0)
-    private var windowBackground: android.graphics.drawable.Drawable? = null
     private lateinit var feedback: KeyFeedback
     private var systemDark by mutableStateOf(false)
     private var suggestions by mutableStateOf<List<String>>(emptyList())
@@ -246,11 +245,11 @@ class RekeyImeService :
         // change never triggers a relayout.
         (lp as? android.widget.FrameLayout.LayoutParams)?.gravity = Gravity.BOTTOM
         holder.layoutParams = lp
-        if (windowBackground == null) windowBackground = w.background
+        // The framework has no getBackground() on Window; once floating the
+        // window is transparent for good, which is what an IME window wants
+        // anyway — the board draws its own surface.
         if (floating) {
             w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
-        } else {
-            windowBackground?.let { w.setBackgroundDrawable(it) }
         }
     }
 
@@ -442,8 +441,10 @@ class RekeyImeService :
                     showFloatPrompt = false
                     runCatching {
                         startActivity(
-                            Intent(Settings.ACTION_MANAGE_OVERLAY_DRAW)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:$packageName"),
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     }
                 },
@@ -495,8 +496,10 @@ class RekeyImeService :
                 showFloatPrompt = false
                 runCatching {
                     startActivity(
-                        Intent(Settings.ACTION_MANAGE_OVERLAY_DRAW)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:$packageName"),
+                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }
                 return
@@ -642,8 +645,8 @@ class RekeyImeService :
             ?.getItemAt(0)?.coerceToText(this)?.toString()
         if (text.isNullOrBlank()) return
         val keepPinned = clipHistory.firstOrNull { it.text == text }?.pinned ?: false
-        clipHistory = (ClipEntry(text, keepPinned) + clipHistory.filterNot { it.text == text })
-            .take(20)
+        clipHistory = (listOf(ClipEntry(text, keepPinned)) +
+            clipHistory.filterNot { it.text == text }).take(20)
         preferences.saveClipHistory(clipHistory)
     }
 
@@ -797,14 +800,15 @@ class RekeyImeService :
                 contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD,
             ) ?: return
             if (!self.startsWith(packageName)) return
-            val subtype = android.view.inputmethod.InputMethodSubtype.Builder()
+            val subtype = android.view.inputmethod.InputMethodSubtype
+                .InputMethodSubtypeBuilder()
                 .setLanguageTag(tag)
-                .setMode("keyboard")
+                .setSubtypeMode("keyboard")
                 .setIsAuxiliary(false)
                 .build()
-            // The service-level call switches our own subtype without
-            // disturbing whichever other keyboard the owner may use.
-            setInputMethodAndSubtype(self, subtype)
+            // The service-level switch replaces the removed
+            // setInputMethodAndSubtype: our own id, the new subtype.
+            switchInputMethod(self, subtype)
         }
     }
 

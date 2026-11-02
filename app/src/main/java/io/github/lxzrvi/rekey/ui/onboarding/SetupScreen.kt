@@ -205,8 +205,10 @@ fun SetupScreen(
                     overlayOk = Settings.canDrawOverlays(context)
                     runCatching {
                         context.startActivity(
-                            Intent(Settings.ACTION_MANAGE_OVERLAY_DRAW)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:${context.packageName}"),
+                            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     }
                 },

@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
  * host made the card flash its background a frame late on every tap. One small
  * LRU keyed by uri+size keeps every host pixel-identical on the first frame.
  */
-private val imageCache = object : LruCache<String, ImageBitmap>(24)
+private val imageCache = object : LruCache<String, ImageBitmap>(24) {}
 
 /** Decoded background, downsampled so a 12 MP photo never lands on the UI thread. */
 private suspend fun decode(context: Context, uri: String, maxPx: Int): ImageBitmap? =

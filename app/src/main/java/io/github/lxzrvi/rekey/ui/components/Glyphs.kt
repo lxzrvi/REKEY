@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RectF
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -395,7 +395,7 @@ fun RekeyGlyph(
                 drawCircle(color, 8.6f * s, p(12f, 12f), style = stroke)
                 val a = Path().apply {
                     moveTo(12f * s, 3.4f * s)
-                    arcTo(RectF(3.4f * s, 3.4f * s, 20.6f * s, 20.6f * s), 270f, 180f, false)
+                    arcTo(Rect(3.4f * s, 3.4f * s, 20.6f * s, 20.6f * s), 270f, 180f, false)
                     close()
                 }
                 drawPath(a, color)

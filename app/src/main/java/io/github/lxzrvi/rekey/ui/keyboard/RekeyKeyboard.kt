@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -356,7 +357,6 @@ fun RekeyKeyboard(
                 .width(kbWidth)
                 .animateContentSize(
                     animationSpec = spring(dampingRatio = 0.92f, stiffness = 320f),
-                    label = "boardSize",
                 )
                 .clip(boardShape)
                 .onGloballyPositioned { c ->
@@ -1950,7 +1950,7 @@ private fun ClipPanelPopup(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                item.text.replace('\\n', ' '),
+                                item.text.replace('\n', ' '),
                                 color = Color.White,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -2083,9 +2083,10 @@ private fun HintOverlay(
             .clip(ui.keyShape)
             .background(ui.keyBg)
             .then(
-                if (ui.borderCol != null && ui.borderW > 0.dp) {
-                    Modifier.border(ui.borderW, ui.borderCol, ui.keyShape)
-                } else Modifier,
+                ui.borderCol?.let { bc ->
+                    if (ui.borderW > 0.dp) Modifier.border(ui.borderW, bc, ui.keyShape)
+                    else Modifier
+                } ?: Modifier,
             )
             .zIndex(10f),
         contentAlignment = Alignment.Center,
